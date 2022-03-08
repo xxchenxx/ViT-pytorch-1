@@ -24,7 +24,7 @@ from models.modeling import VisionTransformer, CONFIGS
 from utils.scheduler import WarmupLinearSchedule, WarmupCosineSchedule
 from utils.data_utils import get_loader
 from utils.dist_util import get_world_size
-
+from utils.compress_utils import GradientEstimate
 
 logger = logging.getLogger(__name__)
 
@@ -141,7 +141,7 @@ def valid(args, model, writer, test_loader, global_step):
     return accuracy
 
 
-def train(args, model):
+def distill(args, model):
     """ Train the model """
     if args.local_rank in [-1, 0]:
         os.makedirs(args.output_dir, exist_ok=True)
@@ -150,7 +150,7 @@ def train(args, model):
     args.train_batch_size = args.train_batch_size // args.gradient_accumulation_steps
 
     # Prepare dataset
-    train_loader, test_loader = get_loader(args)
+    train_loader, test_loader = get_loader(args, True)
 
     # Prepare optimizer and scheduler
     optimizer = torch.optim.SGD(model.parameters(),
@@ -182,10 +182,33 @@ def train(args, model):
                     torch.distributed.get_world_size() if args.local_rank != -1 else 1))
     logger.info("  Gradient Accumulation steps = %d", args.gradient_accumulation_steps)
 
+    input_attention = {}
+    output_attention = {}
+    def get_activation(name):
+        def hook(model, input, output):
+            output_attention[name] = output[0].detach()
+            input_attention[name] = input[0].detach()
+
+        return hook
+    from models.modeling import Attention
+    for name, m in model.named_modules():
+        if isinstance(m, Attention):
+            m.register_forward_hook(get_activation(name))
+        
     model.zero_grad()
     set_seed(args)  # Added here for reproducibility (even between python 2 and 3)
     losses = AverageMeter()
     global_step, best_acc = 0, 0
+
+    estimators = [GradientEstimate().cuda() for _ in range(12)]
+    states = [None for _ in range(12)]
+    best_val_loss = [100 for _ in range(12)]
+    val_loss = [AverageMeter() for _ in range(12)]
+
+    optimizer = torch.optim.SGD([{"params":est.parameters(), "lr": 1e-2} for est in estimators])
+    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, [100, 200], gamma=0.1)
+    criterion = torch.nn.MSELoss()
+    epoch = 0
     while True:
         model.train()
         epoch_iterator = tqdm(train_loader,
@@ -194,52 +217,44 @@ def train(args, model):
                               dynamic_ncols=True,
                               disable=args.local_rank not in [-1, 0])
         for step, batch in enumerate(epoch_iterator):
-            batch = tuple(t.to(args.device) for t in batch)
+            batch = tuple(t.to(args.device) for t in batch)            
             x, y = batch
-            loss = model(x, y)
+            with torch.no_grad():
+                _ = model(x, y)
+            all_loss = 0
+            for i, (est, ia, oa) in enumerate(zip(estimators, input_attention.values(), output_attention.values())):
+                loss = criterion(est(ia)[0], oa)
+                val_loss[i].update(loss.item())
+                all_loss = all_loss + loss
+            
+            input_attention = {}
+            output_attention = {}
+            all_loss.backward()
 
-            if args.gradient_accumulation_steps > 1:
-                loss = loss / args.gradient_accumulation_steps
-            if args.fp16:
-                with amp.scale_loss(loss, optimizer) as scaled_loss:
-                    scaled_loss.backward()
-            else:
-                loss.backward()
+            print(all_loss.item())
+            optimizer.step()
+            optimizer.zero_grad()
+            scheduler.step()
+            global_step += 1
 
-            if (step + 1) % args.gradient_accumulation_steps == 0:
-                losses.update(loss.item()*args.gradient_accumulation_steps)
-                if args.fp16:
-                    torch.nn.utils.clip_grad_norm_(amp.master_params(optimizer), args.max_grad_norm)
-                else:
-                    torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
-                scheduler.step()
-                optimizer.step()
-                optimizer.zero_grad()
-                global_step += 1
-
-                epoch_iterator.set_description(
-                    "Training (%d / %d Steps) (loss=%2.5f)" % (global_step, t_total, losses.val)
-                )
-                if args.local_rank in [-1, 0]:
-                    writer.add_scalar("train/loss", scalar_value=losses.val, global_step=global_step)
-                    writer.add_scalar("train/lr", scalar_value=scheduler.get_lr()[0], global_step=global_step)
-                if global_step % args.eval_every == 0 and args.local_rank in [-1, 0]:
-                    accuracy = valid(args, model, writer, test_loader, global_step)
-                    if best_acc < accuracy:
-                        save_model(args, model)
-                        best_acc = accuracy
-                    model.train()
-
-                if global_step % t_total == 0:
-                    break
-        losses.reset()
-        if global_step % t_total == 0:
+            epoch_iterator.set_description(
+                "Training (%d) (loss=%2.5f)" % (global_step, losses.val)
+            )
+            
+            for i in range(len(best_val_loss)):
+                if val_loss[i].avg < best_val_loss[i]:
+                    best_val_loss[i] = val_loss[i].avg
+                    states[i] = estimators[i].state_dict()
+                
+        for i in range(12):
+            val_loss[i].reset()
+        
+        epoch += 1
+        print(sum(best_val_loss))
+        if epoch >= 300:
             break
 
-    if args.local_rank in [-1, 0]:
-        writer.close()
-    logger.info("Best Accuracy: \t%f" % best_acc)
-    logger.info("End Training!")
+    torch.save(states, "states.pth.tar")
 
 
 def main():
@@ -324,7 +339,7 @@ def main():
     args, model = setup(args)
 
     # Training
-    train(args, model)
+    distill(args, model)
 
 
 if __name__ == "__main__":

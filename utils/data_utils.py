@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader, RandomSampler, DistributedSampler, Sequ
 logger = logging.getLogger(__name__)
 
 
-def get_loader(args):
+def get_loader(args, subset=False):
     if args.local_rank not in [-1, 0]:
         torch.distributed.barrier()
 
@@ -43,6 +43,8 @@ def get_loader(args):
                                     train=False,
                                     download=True,
                                     transform=transform_test) if args.local_rank in [-1, 0] else None
+    if subset:
+        trainset = torch.utils.data.Subset(trainset, list(range(50)))
     if args.local_rank == 0:
         torch.distributed.barrier()
 
@@ -51,12 +53,12 @@ def get_loader(args):
     train_loader = DataLoader(trainset,
                               sampler=train_sampler,
                               batch_size=args.train_batch_size,
-                              num_workers=4,
+                              num_workers=0,
                               pin_memory=True)
     test_loader = DataLoader(testset,
                              sampler=test_sampler,
                              batch_size=args.eval_batch_size,
-                             num_workers=4,
+                             num_workers=0,
                              pin_memory=True) if testset is not None else None
 
     return train_loader, test_loader
