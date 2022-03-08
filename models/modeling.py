@@ -47,7 +47,48 @@ def swish(x):
 
 
 ACT2FN = {"gelu": torch.nn.functional.gelu, "relu": torch.nn.functional.relu, "swish": swish}
+from einops.layers.torch import Rearrange
 
+
+class FeedForward(nn.Module):
+    def __init__(self, dim, hidden_dim, dropout = 0.):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(dim, hidden_dim),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, dim),
+            nn.Dropout(dropout)
+        )
+    def forward(self, x):
+        return self.net(x)
+        
+class MixerBlock(nn.Module):
+
+    def __init__(self, dim=512, num_patch=128, token_dim=256, channel_dim=2048, dropout = 0.):
+        super().__init__()
+
+        self.token_mix = nn.Sequential(
+            nn.LayerNorm(dim),
+            Rearrange('b n d -> b d n'),
+            FeedForward(num_patch, token_dim, dropout),
+            Rearrange('b d n -> b n d')
+        )
+
+        self.channel_mix = nn.Sequential(
+            nn.LayerNorm(dim),
+            FeedForward(dim, channel_dim, dropout),
+        )
+
+    def forward(self, x):
+
+        x = x + self.token_mix(x)
+
+        x = x + self.channel_mix(x)
+
+        return x
+    def load_from(self, x, **kwargs):
+        pass
 
 class Attention(nn.Module):
     def __init__(self, config, vis):
@@ -232,19 +273,38 @@ class Encoder(nn.Module):
         super(Encoder, self).__init__()
         self.vis = vis
         self.layer = nn.ModuleList()
+        self.mixers = nn.ModuleList()
         self.encoder_norm = LayerNorm(config.hidden_size, eps=1e-6)
         for _ in range(config.transformer["num_layers"]):
             layer = Block(config, vis)
             self.layer.append(copy.deepcopy(layer))
+            self.mixers.append(MixerBlock(dim=768,num_patch=197,channel_dim=768))
 
-    def forward(self, hidden_states):
+    def forward(self, hidden_states, focus_id = 0, mode='attn'):
         attn_weights = []
-        for layer_block in self.layer:
-            hidden_states, weights = layer_block(hidden_states)
+        inputs = []
+        mlp_outputs = []
+        attn_outputs = []
+
+        for idx, layer_block in enumerate(self.layer):
+            if idx == focus_id:
+                #print(hidden_states.shape)
+                inputs.append(hidden_states)
+                mlp_outputs.append(self.mixers[idx](hidden_states))
+            
+            if mode == 'attn':
+                hidden_states, weights = layer_block(hidden_states)
+            else:
+                hidden_states = self.mixers[idx](hidden_states)
+            if idx == focus_id:
+                #print(hidden_states.shape)
+                attn_outputs.append(hidden_states)
             if self.vis:
                 attn_weights.append(weights)
         encoded = self.encoder_norm(hidden_states)
-        return encoded, attn_weights
+
+        #assert False
+        return encoded, (attn_weights, inputs, mlp_outputs, attn_outputs)
 
 
 class Transformer(nn.Module):
@@ -253,9 +313,9 @@ class Transformer(nn.Module):
         self.embeddings = Embeddings(config, img_size=img_size)
         self.encoder = Encoder(config, vis)
 
-    def forward(self, input_ids):
+    def forward(self, input_ids, mode='attn'):
         embedding_output = self.embeddings(input_ids)
-        encoded, attn_weights = self.encoder(embedding_output)
+        encoded, attn_weights = self.encoder(embedding_output, mode=mode)
         return encoded, attn_weights
 
 
@@ -269,8 +329,8 @@ class VisionTransformer(nn.Module):
         self.transformer = Transformer(config, img_size, vis)
         self.head = Linear(config.hidden_size, num_classes)
 
-    def forward(self, x, labels=None):
-        x, attn_weights = self.transformer(x)
+    def forward(self, x, labels=None, mode='attn'):
+        x, attn_weights = self.transformer(x, mode=mode)
         logits = self.head(x[:, 0])
 
         if labels is not None:
