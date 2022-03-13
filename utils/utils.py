@@ -40,7 +40,7 @@ def setup(args, log):
 
     num_classes = 10 if args.dataset == "cifar10" else 100
 
-    model = VisionTransformer(config, args.img_size, zero_head=True, num_classes=num_classes)
+    model = VisionTransformer(config, args.img_size, zero_head=True, num_classes=num_classes, prune_mode=args.prune)
     model.load_from(np.load(args.pretrained_dir))
     model.to(args.device)
     num_params = count_parameters(model)
@@ -75,3 +75,43 @@ class logger(object):
             print(msg)
             with open(os.path.join(self.path, self.log_name), 'a') as f:
                 f.write(msg + "\n")
+
+
+class Mat_Avg_Var_Cal(object):
+    """Computes and stores the average and current value"""
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        self.avg = None
+        self.var = None
+        self.count = 0
+
+    def update(self, mat,):
+        '''
+        :param mat: [b, ...]
+        :return:
+        '''
+        # update avg
+        n = mat.shape[0]
+        avg = mat.mean(0)
+        torch.distributed.all_reduce(avg)
+        avg = avg / torch.distributed.get_world_size()
+
+        if self.avg is None:
+            self.avg = avg
+            self.count += n
+        else:
+            self.avg = self.avg * (self.count / (self.count + n)) + mat.sum(0) * (n / (self.count + n))
+            self.count += n
+
+        # update var
+        n = mat.shape[0]
+        var = torch.pow(mat - self.avg.unsqueeze(0), 2).mean(dim=0).detach().mean(0)
+        torch.distributed.all_reduce(var)
+        var = var / torch.distributed.get_world_size()
+
+        if self.var is None:
+            self.var = var
+        else:
+            self.var = self.var * (self.count / (self.count + n)) + var.sum(0) * (n / (self.count + n))

@@ -21,6 +21,8 @@ from utils.data_utils import get_loader
 from utils.dist_util import get_world_size
 from utils.utils import *
 
+from prune.masking import Masking
+
 import time
 
 
@@ -76,7 +78,7 @@ def valid(args, model, writer, test_loader, global_step, log):
     return accuracy
 
 
-def train(args, model, log, writer):
+def train(args, model, masking, log, writer):
     batch_time = AverageMeter()
     data_time = AverageMeter()
 
@@ -119,12 +121,17 @@ def train(args, model, log, writer):
     set_seed(args)  # Added here for reproducibility (even between python 2 and 3)
     losses = AverageMeter()
     global_step, best_acc = 0, 0
+
+    if args.prune:
+        masking.init(train_loader, model)
+        model.train()
+
     while True:
         model.train()
         end = time.time()
         for step, batch in enumerate(train_loader):
-            batch = tuple(t.to(args.device) for t in batch)
             data_time.update(time.time() - end)
+            batch = tuple(t.to(args.device) for t in batch)
 
             x, y = batch
             loss = model(x, y)
@@ -163,6 +170,10 @@ def train(args, model, log, writer):
                     if best_acc < accuracy:
                         save_model(args, model, log)
                         best_acc = accuracy
+                    model.train()
+                torch.distributed.barrier()
+                if global_step % args.prune_inv == 0 and (global_step <= args.prune_end):
+                    masking.step(train_loader, model)
                     model.train()
 
                 if global_step % t_total == 0:
@@ -230,6 +241,15 @@ def main():
                         help="Loss scaling to improve fp16 numeric stability. Only used when fp16 set to True.\n"
                              "0 (default value): dynamic loss scaling.\n"
                              "Positive power of 2: static loss scaling value.\n")
+
+    # prune
+    parser.add_argument('--prune', action='store_true', help="Whether to use 16-bit float precision instead of 32-bit")
+    parser.add_argument('--prune_dense_ratio', type=float, default=0.5, help="the target density")
+    parser.add_argument('--prune_death_rate', type=float, default=0.1, help="the target density")
+    parser.add_argument('--prune_avg_magni_var_alpha', type=float, default=0.5, help="the weight of mean in pruning")
+    parser.add_argument('--prune_inv', type=int, default=500, help="the step inv for conducting pruning")
+    parser.add_argument('--prune_end', type=int, default=8000, help="Whether to use 16-bit float precision instead of 32-bit")
+
     args = parser.parse_args()
 
     # Setup CUDA, GPU & distributed training
@@ -264,9 +284,13 @@ def main():
 
     # Model & Tokenizer Setup
     args, model = setup(args, log)
+    masking = None
+    if args.prune:
+        masking = Masking(model, death_rate=args.prune_death_rate, density=args.prune_dense_ratio,
+                          death_rate_decay=None, args=args, avg_magni_var_alpha=args.prune_avg_magni_var_alpha, log=log)
 
     # Training
-    train(args, model, log, writer)
+    train(args, model, masking, log, writer)
 
 
 if __name__ == "__main__":
