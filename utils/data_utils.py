@@ -6,8 +6,6 @@ from torchvision import transforms, datasets
 from torch.utils.data import DataLoader, RandomSampler, DistributedSampler, SequentialSampler
 
 
-logger = logging.getLogger(__name__)
-
 
 def get_loader(args):
     if args.local_rank not in [-1, 0]:
