@@ -21,6 +21,8 @@ from utils.data_utils import get_loader
 from utils.dist_util import get_world_size
 from utils.utils import *
 
+import time
+
 
 def valid(args, model, writer, test_loader, global_step, log):
     # Validation!
@@ -29,6 +31,8 @@ def valid(args, model, writer, test_loader, global_step, log):
     log.info("***** Running Validation *****")
     log.info("  Num steps = {}".format(len(test_loader)))
     log.info("  Batch size = {}".format(args.eval_batch_size))
+
+    end = time.time()
 
     model.eval()
     all_preds, all_label = [], []
@@ -66,13 +70,15 @@ def valid(args, model, writer, test_loader, global_step, log):
     log.info("Global Steps: {}".format(global_step))
     log.info("Valid Loss: {}".format(eval_losses.avg))
     log.info("Valid Accuracy: {}".format(accuracy))
+    log.info("Time spent: {:.2f}".format(time.time() - end))
 
     writer.add_scalar("test/accuracy", scalar_value=accuracy, global_step=global_step)
     return accuracy
 
 
 def train(args, model, log, writer):
-
+    batch_time = AverageMeter()
+    data_time = AverageMeter()
 
     args.train_batch_size = args.train_batch_size // args.gradient_accumulation_steps
 
@@ -115,8 +121,11 @@ def train(args, model, log, writer):
     global_step, best_acc = 0, 0
     while True:
         model.train()
+        end = time.time()
         for step, batch in enumerate(train_loader):
             batch = tuple(t.to(args.device) for t in batch)
+            data_time.update(time.time() - end)
+
             x, y = batch
             loss = model(x, y)
 
@@ -127,6 +136,10 @@ def train(args, model, log, writer):
             #         scaled_loss.backward()
             # else:
             loss.backward()
+
+            # measure elapsed time
+            batch_time.update(time.time() - end)
+            end = time.time()
 
             if (step + 1) % args.gradient_accumulation_steps == 0:
                 losses.update(loss.item()*args.gradient_accumulation_steps)
@@ -139,8 +152,9 @@ def train(args, model, log, writer):
                 optimizer.zero_grad()
                 global_step += 1
 
-                if step % 50 == 0:
-                    log.info("Training ({} / {} Steps) (loss={:2.5f})".format(global_step, t_total, losses.val))
+                if global_step % 50 == 0:
+                    log.info("Training ({}/{} Steps)\t(loss={:2.5f})\tData time={:.2f}({:.2f})\tBatch time={:.2f}({:.2f})".format(
+                        global_step, t_total, losses.val, data_time.val, data_time.avg, batch_time.val, batch_time.avg))
                 if args.local_rank in [-1, 0]:
                     writer.add_scalar("train/loss", scalar_value=losses.val, global_step=global_step)
                     writer.add_scalar("train/lr", scalar_value=scheduler.get_lr()[0], global_step=global_step)
