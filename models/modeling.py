@@ -293,13 +293,13 @@ class Encoder(nn.Module):
                 mlp_outputs.append(self.mixers[idx](hidden_states))
             
             if mode == 'attn':
-                print('ATTN')
+
                 hidden_states, weights = layer_block(hidden_states)
             elif idx in self.focus_id:
-                print("MLP")
+
                 hidden_states = self.mixers[idx](hidden_states)
             else:
-                print("ATTN")
+                
                 hidden_states, weights = layer_block(hidden_states)
 
 
