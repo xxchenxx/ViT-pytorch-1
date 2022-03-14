@@ -93,6 +93,7 @@ class Attention(nn.Module):
             attention_scores.masked_fill_(~self.attention_mask.detach(), float('-inf'))
 
         attention_probs = self.softmax(attention_scores)
+
         if self.record_attention_probs:
             self.attention_probs = attention_probs
         if self.prune_mode and (self.record_attn_mean_var is not None):
