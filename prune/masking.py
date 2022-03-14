@@ -124,3 +124,43 @@ class Masking(object):
 
         self.log.info('Target density level is {}, current density level is {}'.format(
             self.density, (dense_size / total_size)))
+
+
+class TaylorMasking(Masking):
+    def score_collect(self, train_loader, model):
+        assert self.death_mode == "avg_magni_var"
+
+        for name, module in model.named_modules():
+            if isinstance(module, Attention):
+                module.record_attn_mean_var = Mat_Avg_Var_Cal()
+                module.record_attention = True
+        model.zero_grad()
+        for step, batch in enumerate(train_loader):
+            batch = tuple(t.to(self.args.device) for t in batch)
+            x, y = batch
+            loss = model(x, y)
+            
+            for module in model.modules():
+                if isinstance(module, Attention):
+                    grad = torch.autograd.grad(loss, module.attention_probs, only_inputs=True, retain_graph=True)
+                    print(grad)
+            assert False
+            
+            if step % 50 == 0:
+                self.log.info("collecting score {}/{}".format(step, len(train_loader)))
+
+        scores_dict = {}
+        for name, module in model.named_modules():
+            if isinstance(module, Attention):
+                # calculate score
+                avg = module.record_attn_mean_var.avg
+                var = module.record_attn_mean_var.var
+                # normalize
+                avg_norm = (avg - avg.mean()) / torch.clamp(avg.std(), min=1e-7)
+                var_norm = (var - var.mean()) / torch.clamp(var.std(), min=1e-7)
+                score = self.avg_magni_var_alpha * avg_norm + (1 - self.avg_magni_var_alpha) * var_norm
+
+                scores_dict[name] = score
+                module.record_attn_mean_var = None
+
+        return scores_dict

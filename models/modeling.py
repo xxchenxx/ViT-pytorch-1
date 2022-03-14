@@ -70,7 +70,8 @@ class Attention(nn.Module):
             self.record_attn_mean_var = None
 
         self.softmax = Softmax(dim=-1)
-
+        self.attention_probs = None
+        self.record_attention_probs = False
     def transpose_for_scores(self, x):
         new_x_shape = x.size()[:-1] + (self.num_attention_heads, self.attention_head_size)
         x = x.view(*new_x_shape)
@@ -87,12 +88,13 @@ class Attention(nn.Module):
         #print(query_layer.shape)
         attention_scores = torch.matmul(query_layer, key_layer.transpose(-1, -2))
         attention_scores = attention_scores / math.sqrt(self.attention_head_size)
-
+        
         if self.prune_mode:
             attention_scores.masked_fill_(~self.attention_mask.detach(), float('-inf'))
 
         attention_probs = self.softmax(attention_scores)
-
+        if self.record_attention_probs:
+            self.attention_probs = attention_probs
         if self.prune_mode and (self.record_attn_mean_var is not None):
             self.record_attn_mean_var.update(attention_probs.detach())
 
