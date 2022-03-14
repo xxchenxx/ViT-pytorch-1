@@ -59,7 +59,7 @@ def setup(args):
 
     num_classes = 10 if args.dataset == "cifar10" else 100
 
-    model = VisionTransformer(config, args.img_size, zero_head=True, num_classes=num_classes)
+    model = VisionTransformer(config, args.img_size, zero_head=True, num_classes=num_classes, focus_id=args.focus_id)
     model.load_from(np.load(args.pretrained_dir))
     model.to(args.device)
     num_params = count_parameters(model)
@@ -77,6 +77,8 @@ def count_parameters(model):
 
 
 def set_seed(args):
+    torch.backends.cudnn.benchmark=False
+    torch.backends.cudnn.deterministic=True
     random.seed(args.seed)
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
@@ -230,7 +232,7 @@ def train(args, model):
     logger.info("Best Accuracy: \t%f" % best_acc)
     logger.info("End Training!")
 
-    torch.save(model.state_dict(), "saved")
+    torch.save(model.state_dict(), f"saved_id{args.focus_id}.pth")
 
 
 def main():
@@ -287,6 +289,7 @@ def main():
                         help="Loss scaling to improve fp16 numeric stability. Only used when fp16 set to True.\n"
                              "0 (default value): dynamic loss scaling.\n"
                              "Positive power of 2: static loss scaling value.\n")
+    parser.add_argument('--focus-id', type=int, default=0)
     args = parser.parse_args()
 
     # Setup CUDA, GPU & distributed training

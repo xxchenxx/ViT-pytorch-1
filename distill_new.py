@@ -59,7 +59,7 @@ def setup(args):
 
     num_classes = 10 if args.dataset == "cifar10" else 100
 
-    model = VisionTransformer(config, args.img_size, zero_head=True, num_classes=num_classes)
+    model = VisionTransformer(config, args.img_size, zero_head=True, num_classes=num_classes, focus_id=args.focus_id)
     model.load_from(np.load(args.pretrained_dir))
     model.to(args.device)
     num_params = count_parameters(model)
@@ -77,6 +77,8 @@ def count_parameters(model):
 
 
 def set_seed(args):
+    torch.backends.cudnn.benchmark=False
+    torch.backends.cudnn.deterministic=True
     random.seed(args.seed)
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
@@ -84,7 +86,7 @@ def set_seed(args):
         torch.cuda.manual_seed_all(args.seed)
 
 
-def valid(args, model, writer, test_loader, global_step):
+def valid(args, model, writer, test_loader, global_step, mode='mode'):
     # Validation!
     eval_losses = AverageMeter()
 
@@ -104,7 +106,7 @@ def valid(args, model, writer, test_loader, global_step):
         batch = tuple(t.to(args.device) for t in batch)
         x, y = batch
         with torch.no_grad():
-            logits = model(x)[0]
+            logits = model(x, mode=mode)[0]
 
             eval_loss = loss_fct(logits, y)
             eval_losses.update(eval_loss.item())
@@ -167,7 +169,7 @@ def train(args, model):
                 args.train_batch_size * args.gradient_accumulation_steps * (
                     torch.distributed.get_world_size() if args.local_rank != -1 else 1))
     logger.info("  Gradient Accumulation steps = %d", args.gradient_accumulation_steps)
-    model.load_state_dict(torch.load("saved"))
+    model.load_state_dict(torch.load(f"saved_id{args.focus_id}.pth"))
     model.zero_grad()
     set_seed(args)  # Added here for reproducibility (even between python 2 and 3)
     losses = AverageMeter()
@@ -210,7 +212,8 @@ def train(args, model):
                     writer.add_scalar("train/loss", scalar_value=losses.val, global_step=global_step)
                     writer.add_scalar("train/lr", scalar_value=scheduler.get_lr()[0], global_step=global_step)
                 if global_step % args.eval_every == 0 and args.local_rank in [-1, 0]:
-                    accuracy = valid(args, model, writer, test_loader, global_step)
+                    #accuracy = valid(args, model, writer, train_loader, global_step, mode="mlp")
+                    accuracy = valid(args, model, writer, test_loader, global_step, mode="mlp")
                     if best_acc < accuracy:
                         save_model(args, model)
                         best_acc = accuracy
@@ -282,6 +285,8 @@ def main():
                         help="Loss scaling to improve fp16 numeric stability. Only used when fp16 set to True.\n"
                              "0 (default value): dynamic loss scaling.\n"
                              "Positive power of 2: static loss scaling value.\n")
+    
+    parser.add_argument('--focus-id', type=int, default=0)
     args = parser.parse_args()
 
     # Setup CUDA, GPU & distributed training

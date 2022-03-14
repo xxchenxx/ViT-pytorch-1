@@ -269,34 +269,41 @@ class Block(nn.Module):
 
 
 class Encoder(nn.Module):
-    def __init__(self, config, vis):
+    def __init__(self, config, vis, focus_id=None):
         super(Encoder, self).__init__()
         self.vis = vis
         self.layer = nn.ModuleList()
         self.mixers = nn.ModuleList()
         self.encoder_norm = LayerNorm(config.hidden_size, eps=1e-6)
+        self.focus_id = [focus_id] # single id
         for _ in range(config.transformer["num_layers"]):
             layer = Block(config, vis)
             self.layer.append(copy.deepcopy(layer))
-            self.mixers.append(MixerBlock(dim=768,num_patch=197,channel_dim=768))
+            self.mixers.append(MixerBlock(dim=768,num_patch=197,channel_dim=768, token_dim=512))
 
-    def forward(self, hidden_states, focus_id = 0, mode='attn'):
+    def forward(self, hidden_states, mode='attn'):
         attn_weights = []
         inputs = []
         mlp_outputs = []
         attn_outputs = []
-
         for idx, layer_block in enumerate(self.layer):
-            if idx == focus_id:
+            if idx in self.focus_id:
                 #print(hidden_states.shape)
                 inputs.append(hidden_states)
                 mlp_outputs.append(self.mixers[idx](hidden_states))
             
             if mode == 'attn':
+                print('ATTN')
                 hidden_states, weights = layer_block(hidden_states)
-            else:
+            elif idx in self.focus_id:
+                print("MLP")
                 hidden_states = self.mixers[idx](hidden_states)
-            if idx == focus_id:
+            else:
+                print("ATTN")
+                hidden_states, weights = layer_block(hidden_states)
+
+
+            if idx in self.focus_id:
                 #print(hidden_states.shape)
                 attn_outputs.append(hidden_states)
             if self.vis:
@@ -308,10 +315,10 @@ class Encoder(nn.Module):
 
 
 class Transformer(nn.Module):
-    def __init__(self, config, img_size, vis):
+    def __init__(self, config, img_size, vis, focus_id=None):
         super(Transformer, self).__init__()
         self.embeddings = Embeddings(config, img_size=img_size)
-        self.encoder = Encoder(config, vis)
+        self.encoder = Encoder(config, vis, focus_id)
 
     def forward(self, input_ids, mode='attn'):
         embedding_output = self.embeddings(input_ids)
@@ -320,15 +327,14 @@ class Transformer(nn.Module):
 
 
 class VisionTransformer(nn.Module):
-    def __init__(self, config, img_size=224, num_classes=21843, zero_head=False, vis=False):
+    def __init__(self, config, img_size=224, num_classes=21843, zero_head=False, vis=False, focus_id=None):
         super(VisionTransformer, self).__init__()
         self.num_classes = num_classes
         self.zero_head = zero_head
         self.classifier = config.classifier
 
-        self.transformer = Transformer(config, img_size, vis)
+        self.transformer = Transformer(config, img_size, vis, focus_id)
         self.head = Linear(config.hidden_size, num_classes)
-
     def forward(self, x, labels=None, mode='attn'):
         x, attn_weights = self.transformer(x, mode=mode)
         logits = self.head(x[:, 0])
