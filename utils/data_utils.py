@@ -6,8 +6,6 @@ from torchvision import transforms, datasets
 from torch.utils.data import DataLoader, RandomSampler, DistributedSampler, SequentialSampler
 
 
-logger = logging.getLogger(__name__)
-
 
 def get_loader(args, subset=False):
     if args.local_rank not in [-1, 0]:
@@ -53,12 +51,20 @@ def get_loader(args, subset=False):
     train_loader = DataLoader(trainset,
                               sampler=train_sampler,
                               batch_size=args.train_batch_size,
+<<<<<<< HEAD
                               num_workers=0,
+=======
+                              num_workers=args.num_workers,
+>>>>>>> 67eaadd7401075b810c27ffc2ea34b21575aa5bd
                               pin_memory=True)
     test_loader = DataLoader(testset,
                              sampler=test_sampler,
                              batch_size=args.eval_batch_size,
+<<<<<<< HEAD
                              num_workers=0,
+=======
+                             num_workers=args.num_workers,
+>>>>>>> 67eaadd7401075b810c27ffc2ea34b21575aa5bd
                              pin_memory=True) if testset is not None else None
 
     return train_loader, test_loader
