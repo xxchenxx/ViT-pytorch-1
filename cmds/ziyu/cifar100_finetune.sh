@@ -18,10 +18,10 @@ save_dir="/mnt/models/Ziyu_model/M2M_ViT"
 #save_dir="."
 
 #devices="0,1,2,3"
-#devices="4,5,6,7"
+devices="4,5,6,7"
 #devices="8,9,10,11"
-devices="12,13,14,15"
-port=5588
+#devices="12,13,14,15"
+port=5589
 n_gpu=4
 
 lr=1e-2
