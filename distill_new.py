@@ -286,7 +286,7 @@ def main():
                              "0 (default value): dynamic loss scaling.\n"
                              "Positive power of 2: static loss scaling value.\n")
     
-    parser.add_argument('--focus-id', type=int, default=0)
+    parser.add_argument('--focus-id', type=int, default=0, nargs='+')
     args = parser.parse_args()
 
     # Setup CUDA, GPU & distributed training

@@ -82,7 +82,7 @@ class MixerBlock(nn.Module):
 
     def forward(self, x):
 
-        x = x + self.token_mix(x)
+        #x = x + self.token_mix(x)
 
         x = x + self.channel_mix(x)
 
@@ -275,11 +275,11 @@ class Encoder(nn.Module):
         self.layer = nn.ModuleList()
         self.mixers = nn.ModuleList()
         self.encoder_norm = LayerNorm(config.hidden_size, eps=1e-6)
-        self.focus_id = [focus_id] # single id
+        self.focus_id = focus_id # single id
         for _ in range(config.transformer["num_layers"]):
             layer = Block(config, vis)
             self.layer.append(copy.deepcopy(layer))
-            self.mixers.append(MixerBlock(dim=768,num_patch=197,channel_dim=768, token_dim=512))
+            self.mixers.append(MixerBlock(dim=768,num_patch=197,channel_dim=768, token_dim=256))
 
     def forward(self, hidden_states, mode='attn'):
         attn_weights = []
