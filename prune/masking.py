@@ -66,7 +66,10 @@ class Masking(object):
                     new_rest_num = int(self.density * module.attention_mask.float().sum().item())
 
                 threshold, _ = torch.topk(scores[name].flatten(), new_rest_num, sorted=True)
-                module.attention_mask.data = (scores[name] >= threshold[-1]) & module.attention_mask.data
+                if len(threshold) > 1:
+                    module.attention_mask.data = (scores[name] >= threshold[-1]) & module.attention_mask.data
+                else:
+                    module.attention_mask.data = torch.zeros_like(module.attention_mask.data)
 
         if not first_time:
             # grow
