@@ -137,14 +137,20 @@ class TaylorMasking(Masking):
                 module.record_attention_probs = True
         model.zero_grad()
         for step, batch in enumerate(train_loader):
+            #print(step)
             batch = tuple(t.to(self.args.device) for t in batch)
             x, y = batch
-            loss = model(x[0:1], y[0:1])
-            print(step)
+            loss = model(x, y)
+            to_grads = []
             for module in model.modules():
                 if isinstance(module, Attention):
-                    grad = torch.autograd.grad(loss, module.attention_probs, only_inputs=True, retain_graph=True)[0]
-                    module.record_attn_taylor.update(module.attention_probs, grad)
+                    to_grads.append(module.attention_probs)
+            grads = torch.autograd.grad(loss, to_grads, only_inputs=True, retain_graph=True)[0]
+            idx = 0
+            for module in model.modules():
+                if isinstance(module, Attention):
+                    module.record_attn_taylor.update(module.attention_probs, grads[idx])
+                    idx += 1
             
             if step % 50 == 0:
                 self.log.info("collecting score {}/{}".format(step, len(train_loader)))
@@ -154,10 +160,12 @@ class TaylorMasking(Masking):
             if isinstance(module, Attention):
                 # calculate score
                 avg = module.record_attn_taylor.avg
+                var = module.record_attn_taylor.var
+
                 # normalize
-                #avg_norm = (avg - avg.mean()) / torch.clamp(avg.std(), min=1e-7)
-                #var_norm = (var - var.mean()) / torch.clamp(var.std(), min=1e-7)
-                score = avg #self.avg_magni_var_alpha * avg_norm + (1 - self.avg_magni_var_alpha) * var_norm
+                avg_norm = (avg - avg.mean()) / torch.clamp(avg.std(), min=1e-7)
+                var_norm = (var - var.mean()) / torch.clamp(var.std(), min=1e-7)
+                score = self.avg_magni_var_alpha * avg_norm + (1 - self.avg_magni_var_alpha) * var_norm
 
                 scores_dict[name] = score
                 module.record_attn_mean_var = None
