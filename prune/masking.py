@@ -65,17 +65,17 @@ class Masking(object):
                 param.requires_grad = False
             model_pretrain.eval()
             model.eval()
+
+            # prune to target dim
+            scores = self.score_collect(train_loader, model)
+            self.truncate_weights(scores, model, first_time=True)
+
             # iteratively truncate the weight to make the distance to previous pre-train small
             for iter in range(self.init_iter_time):
-                target_density = 1 - exp_prune_ratio_cal(iter + 1, self.init_iter_time, 1 - self.density)
-                self.log.info("prune iteration {}, prune to density of {}".format(iter, target_density))
-                if iter == 0:
-                    # in the first iter, use magnitude pruning
-                    scores = self.score_collect(train_loader, model)
-                else:
-                    scores = self.score_collect_taylor_distance(train_loader, model, model_pretrain, distance_mode=True)
-                self.truncate_weights(scores, model, first_time=True, first_time_claim_density=target_density)
-                self.print_nonzero_counts(target_density=target_density)
+                # rigL to search the pruning method with least affect to the pretrained model
+                scores = self.score_collect_taylor_distance(train_loader, model, model_pretrain, distance_mode=True)
+                self.truncate_weights(scores, model)
+                self.print_nonzero_counts()
         else:
             raise ValueError("No init method of {}".format(self.init_method))
 
