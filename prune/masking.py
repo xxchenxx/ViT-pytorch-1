@@ -11,8 +11,14 @@ from utils.utils import Mat_Avg_Var_Cal, Taylor_Cal
 
 from models.modeling import Attention
 
+def exp_prune_ratio_cal(current_step, all_steps, final_prune):
+    prune_each_step = 1 - math.exp(math.log(max(1 - final_prune, 1e-4)) / all_steps)
+    prune_current = 1 - ((1 - prune_each_step) ** current_step)
+    return prune_current
+
 class Masking(object):
-    def __init__(self, model, death_rate=0.3, growth_death_ratio=1.0, density=0.5, death_rate_decay=None, death_mode='avg_magni_var',
+    def __init__(self, model, death_rate=0.3, growth_death_ratio=1.0, density=0.5, death_rate_decay=None,
+                 init_method='avg_magni_var', init_iter_time=5, death_mode='avg_magni_var',
                  growth_mode='random', args=None, avg_magni_var_alpha=0, log=None):
         growth_modes = ['random']
         if growth_mode not in growth_modes:
@@ -27,6 +33,8 @@ class Masking(object):
         self.death_rate_decay = death_rate_decay
         self.log = log
         self.avg_magni_var_alpha = avg_magni_var_alpha
+        self.init_method = init_method
+        self.init_iter_time = init_iter_time
 
         assert growth_mode == 'random'
         assert death_mode == 'avg_magni_var'
@@ -46,8 +54,25 @@ class Masking(object):
         self.print_nonzero_counts()
 
     def init(self, train_loader, model):
-        scores = self.score_collect(train_loader, model)
-        self.truncate_weights(scores, model, first_time=True)
+        if self.init_method == "avg_magni_var":
+            scores = self.score_collect(train_loader, model)
+            self.truncate_weights(scores, model, first_time=True)
+        elif self.init_method == "taylor_change_magni_var":
+            # init a pretrain model
+            model_pretrain = copy.deepcopy(model)
+            for param in model_pretrain:
+                param.requires_grad = False
+            model_pretrain.eval()
+            model.eval()
+            # iteratively truncate the weight to make the distance to previous pre-train small
+            for iter in range(self.init_iter_time):
+                target_density = 1 - exp_prune_ratio_cal(iter + 1, self.init_iter_time, 1 - self.density)
+                self.log.info("prune iteration {}, prune to density of {}".format(iter, target_density))
+                scores = self.score_collect_taylor_distance(train_loader, model, model_pretrain)
+                self.truncate_weights(scores, model, first_time=True, first_time_claim_density=target_density)
+        else:
+            raise ValueError("No init method of {}".format(self.init_method))
+
         self.print_nonzero_counts()
 
     def step(self, train_loader, model):
@@ -56,14 +81,15 @@ class Masking(object):
         self.print_nonzero_counts()
 
 
-    def truncate_weights(self, scores, model, first_time=False):
+    def truncate_weights(self, scores, model, first_time=False, first_time_claim_density=-1):
         # death
         for name, module in model.named_modules():
             if name in scores:
                 if not first_time:
                     new_rest_num = int((1 - self.death_rate) * module.attention_mask.float().sum().item())
                 else:
-                    new_rest_num = int(self.density * module.attention_mask.float().sum().item())
+                    density = self.density if first_time_claim_density < 0 else first_time_claim_density
+                    new_rest_num = int(density * module.attention_mask.float().sum().item())
 
                 threshold, _ = torch.topk(scores[name].flatten(), new_rest_num, sorted=True)
                 if len(threshold) > 1:
@@ -115,6 +141,58 @@ class Masking(object):
 
         return scores_dict
 
+    def score_collect_taylor_distance(self, train_loader, model, model_pretrain):
+        assert self.death_mode == "avg_magni_var"
+
+        criterion = torch.nn.MSELoss()
+
+        for name, module in model.named_modules():
+            if isinstance(module, Attention):
+                module.record_attn_taylor = Taylor_Cal()
+                module.record_attention_probs = True
+        model.zero_grad()
+        for step, batch in enumerate(train_loader):
+            # print(step)
+            batch = tuple(t.to(self.args.device) for t in batch)
+            x, y = batch
+
+            with torch.no_grad():
+                feature_pretrain = model_pretrain(x, return_encoded_feature=True)
+            feature_pruned = model(x, return_encoded_feature=True)
+            loss = criterion(feature_pruned, feature_pretrain)
+
+            to_grads = []
+            for module in model.modules():
+                if isinstance(module, Attention):
+                    to_grads.append(module.attention_probs)
+            grads = torch.autograd.grad(loss, to_grads, only_inputs=True, retain_graph=False)[0]
+            idx = 0
+            for module in model.modules():
+                if isinstance(module, Attention):
+                    module.record_attn_taylor.update(module.attention_probs, grads[idx])
+                    idx += 1
+
+            if step % 50 == 0:
+                self.log.info("collecting score {}/{}".format(step, len(train_loader)))
+
+        scores_dict = {}
+        for name, module in model.named_modules():
+            if isinstance(module, Attention):
+                # calculate score
+                avg = module.record_attn_taylor.avg
+                var = module.record_attn_taylor.var
+
+                # normalize
+                avg_norm = (avg - avg.mean()) / torch.clamp(avg.std(), min=1e-7)
+                var_norm = (var - var.mean()) / torch.clamp(var.std(), min=1e-7)
+                score = self.avg_magni_var_alpha * avg_norm + (1 - self.avg_magni_var_alpha) * var_norm
+
+                scores_dict[name] = score
+
+        return scores_dict
+    '''
+                    Utils
+    '''
     def print_nonzero_counts(self):
         total_size = 0
         for name, weight in self.masks.items():

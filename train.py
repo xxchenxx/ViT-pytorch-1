@@ -248,7 +248,9 @@ def main():
     parser.add_argument('--prune_death_rate', type=float, default=0.1, help="the target density")
     parser.add_argument('--prune_avg_magni_var_alpha', type=float, default=0.5, help="the weight of mean in pruning")
     parser.add_argument('--prune_inv', type=int, default=500, help="the step inv for conducting pruning")
-    parser.add_argument('--prune_end', type=int, default=8000, help="Whether to use 16-bit float precision instead of 32-bit")
+    parser.add_argument('--prune_end', type=int, default=8000, help="the end of pruning")
+    parser.add_argument('--prune_init_method', type=str, default="avg_magni_var", choices=["avg_magni_var", "taylor_change_magni_var"], help="the init pruning method")
+    parser.add_argument('--prune_init_iter_time', type=int, default=5, help="the init iter time, works for [taylor_change_magni_var, ]")
 
     args = parser.parse_args()
 
@@ -287,6 +289,7 @@ def main():
     masking = None
     if args.prune:
         masking = Masking(model, death_rate=args.prune_death_rate, density=args.prune_dense_ratio,
+                          init_method=args.prune_init_method, init_iter_time=args.prune_init_iter_time,
                           death_rate_decay=None, args=args, avg_magni_var_alpha=args.prune_avg_magni_var_alpha, log=log)
 
     # Training
