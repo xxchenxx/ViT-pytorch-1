@@ -101,6 +101,7 @@ class Masking(object):
                     new_rest_num = int(density * module.attention_mask.float().sum().item())
 
                 threshold, _ = torch.topk(scores[name].flatten(), new_rest_num, sorted=True)
+                set_trace()
                 if len(threshold) > 0:
                     module.attention_mask.data = (scores[name] >= threshold[-1]) & module.attention_mask.data
                 else:
