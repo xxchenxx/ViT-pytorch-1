@@ -102,14 +102,14 @@ save_dir="/mnt/models/Ziyu_model/M2M_ViT"
 
 #devices="0,1,2,3"
 #devices="4,5,6,7"
-devices="8,9,10,11"
-#devices="12,13,14,15"
-port=6007
+#devices="8,9,10,11"
+devices="12,13,14,15"
+port=6039
 n_gpu=4
 
 lr=1e-2
 prune_dense_ratio=0.5
-prune_death_rate=0.1
+prune_death_rate=0.3
 prune_avg_magni_var_alpha=1.0
 prune_inv=200
 prune_end=8000

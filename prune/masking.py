@@ -57,6 +57,7 @@ class Masking(object):
         if self.init_method == "avg_magni_var":
             scores = self.score_collect(train_loader, model)
             self.truncate_weights(scores, model, first_time=True)
+            self.print_nonzero_counts()
         elif self.init_method == "taylor_change_magni_var":
             # init a pretrain model
             model_pretrain = copy.deepcopy(model)
@@ -68,8 +69,13 @@ class Masking(object):
             for iter in range(self.init_iter_time):
                 target_density = 1 - exp_prune_ratio_cal(iter + 1, self.init_iter_time, 1 - self.density)
                 self.log.info("prune iteration {}, prune to density of {}".format(iter, target_density))
-                scores = self.score_collect_taylor_distance(train_loader, model, model_pretrain, distance_mode=True)
+                if iter == 0:
+                    # in the first iter, use magnitude pruning
+                    scores = self.score_collect(train_loader, model)
+                else:
+                    scores = self.score_collect_taylor_distance(train_loader, model, model_pretrain, distance_mode=True)
                 self.truncate_weights(scores, model, first_time=True, first_time_claim_density=target_density)
+            self.print_nonzero_counts()
         else:
             raise ValueError("No init method of {}".format(self.init_method))
 
@@ -97,9 +103,10 @@ class Masking(object):
                     new_rest_num = int(density * module.attention_mask.float().sum().item())
 
                 threshold, _ = torch.topk(scores[name].flatten(), new_rest_num, sorted=True)
-                if len(threshold) > 1:
+                if len(threshold) > 0:
                     module.attention_mask.data = (scores[name] >= threshold[-1]) & module.attention_mask.data
                 else:
+                    self.log.info("Warning: there is no module pruned")
                     module.attention_mask.data = torch.zeros_like(module.attention_mask.data)
 
         if not first_time:
@@ -115,8 +122,6 @@ class Masking(object):
                     Collect score
     '''
     def score_collect(self, train_loader, model):
-        assert self.death_mode == "avg_magni_var"
-
         for name, module in model.named_modules():
             if isinstance(module, Attention):
                 module.record_attn_mean_var = Mat_Avg_Var_Cal()
@@ -200,7 +205,7 @@ class Masking(object):
     '''
                     Utils
     '''
-    def print_nonzero_counts(self):
+    def print_nonzero_counts(self, target_density=-1):
         total_size = 0
         for name, weight in self.masks.items():
             total_size  += weight.numel()
@@ -210,8 +215,14 @@ class Masking(object):
         for name, weight in self.masks.items():
             dense_size += weight.sum().int().item()
 
+        if target_density < 0:
+            target_density = self.density
+
         self.log.info('Target density level is {}, current density level is {}'.format(
-            self.density, (dense_size / total_size)))
+            target_density, (dense_size / total_size)))
+
+        if abs(target_density - (dense_size / total_size)) > 0.1:
+            raise ValueError("Current density margin is larger than 0.1")
 
 
 class TaylorMasking(Masking):
