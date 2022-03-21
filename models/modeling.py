@@ -92,12 +92,12 @@ class Attention(nn.Module):
         
         if self.prune_mode and (not self.prune_after_softmax):
             attention_scores.masked_fill_(~self.attention_mask.detach(), float('-inf'))
-
-        attention_probs = self.softmax(attention_scores)
+            attention_probs = self.softmax(attention_scores)
 
         if self.prune_mode and self.prune_after_softmax:
             print("prune after SM")
-            attention_probs = (~self.attention_mask.detach()).float() * attention_probs
+            attention_probs_ = self.softmax(attention_scores)
+            attention_probs = (~self.attention_mask.detach()).float() * attention_probs_
 
         if self.record_attention_probs:
             self.attention_probs = attention_probs
