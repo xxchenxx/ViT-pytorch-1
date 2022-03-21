@@ -6,6 +6,7 @@ import torch.optim as optim
 import copy
 
 import numpy as np
+from pdb import set_trace
 import math
 from utils.utils import Mat_Avg_Var_Cal, Taylor_Cal
 
@@ -165,6 +166,8 @@ class Masking(object):
             for module in model.modules():
                 if isinstance(module, Attention):
                     to_grads.append(module.attention_probs)
+
+            set_trace()
             grads = torch.autograd.grad(loss, to_grads, only_inputs=True, retain_graph=False)[0]
             idx = 0
             for module in model.modules():
