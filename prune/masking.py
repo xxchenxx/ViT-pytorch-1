@@ -136,6 +136,8 @@ class Masking(object):
                 if step % 50 == 0:
                     self.log.info("collecting score {}/{}".format(step, len(train_loader)))
 
+                break
+
         scores_dict = {}
         for name, module in model.named_modules():
             if isinstance(module, Attention):
