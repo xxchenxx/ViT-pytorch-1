@@ -91,12 +91,13 @@ class Attention(nn.Module):
         
         if self.prune_mode:
             attention_mask = self.attention_mask.detach()
-            attention_scores.masked_fill_(~attention_mask, float('-10e30'))
+            attention_scores.masked_fill_(~attention_mask, float('-inf'))
             #attention_scores = masked_tensor(attention_scores, attention_mask)
         attention_probs =  self.softmax(attention_scores)
         #attention_probs = torch.nan_to_num(attention_probs)
         if self.record_attention_probs:
             self.attention_probs = attention_probs
+
         if self.prune_mode and (self.record_attn_mean_var is not None):
             self.record_attn_mean_var.update(attention_probs.detach())
 

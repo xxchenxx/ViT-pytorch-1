@@ -134,8 +134,11 @@ class Taylor_Cal(object):
         '''
         # update avg
         n = weight.shape[0]
-
-        mat = (weight.detach() * grad.detach()).abs()
+        if grad.abs().mean() == 0:
+            print("ALERT: ZERO GRAD DETECTED!")
+            mat = weight.detach().abs()
+        else:
+            mat = (weight.detach() * grad.detach()).abs()
         avg = mat.mean(0)
         torch.distributed.all_reduce(avg)
         avg = avg / torch.distributed.get_world_size()
