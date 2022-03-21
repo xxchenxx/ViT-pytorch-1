@@ -108,9 +108,10 @@ class Masking(object):
                     self.log.info("Warning: there is no module pruned")
                     module.attention_mask.data = torch.zeros_like(module.attention_mask.data)
 
-        self.log.info("After death")
-        self.print_nonzero_counts(target_density=(1 - self.death_rate) * self.density)
         if not first_time:
+            self.log.info("After death")
+            self.print_nonzero_counts(target_density=(1 - self.death_rate) * self.density)
+
             # grow
             for name, module in model.named_modules():
                 if name in scores:
@@ -135,8 +136,6 @@ class Masking(object):
                 loss = model(x, y)
                 if step % 50 == 0:
                     self.log.info("collecting score {}/{}".format(step, len(train_loader)))
-
-                break
 
         scores_dict = {}
         for name, module in model.named_modules():
@@ -189,8 +188,6 @@ class Masking(object):
 
             if step % 50 == 0:
                 self.log.info("collecting score {}/{}".format(step, len(train_loader)))
-
-            break
 
         scores_dict = {}
         for name, module in model.named_modules():
