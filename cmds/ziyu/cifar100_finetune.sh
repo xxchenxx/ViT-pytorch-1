@@ -105,7 +105,7 @@ devices="0,1,2,3"
 #devices="8,9,10,11"
 #devices="12,13,14,15"
 port=6032
-n_gpu=1
+n_gpu=4
 
 lr=1e-2
 prune_dense_ratio=0.5
@@ -122,8 +122,7 @@ train.py --name cifar100-lr${lr}-rigL_taylor_D${prune_dense_ratio}Dth${prune_dea
 --dataset cifar100 --model_type ViT-B_16 --pretrained_dir ${save_dir}/pretrain/ViT-B_16.npz \
 --prune --prune_dense_ratio ${prune_dense_ratio} --prune_death_rate ${prune_death_rate} \
 --prune_avg_magni_var_alpha ${prune_avg_magni_var_alpha} --prune_inv ${prune_inv} --prune_end ${prune_end} \
---prune_init_method taylor_change_magni_var --prune_init_iter_time ${init_iter} --prune_death_mode taylor_magni_var \
---train_batch_size 2 --eval_batch_size 2
+--prune_init_method taylor_change_magni_var --prune_init_iter_time ${init_iter} --prune_death_mode taylor_magni_var
 
 ##############################
 --train_batch_size 2 --eval_batch_size 2
