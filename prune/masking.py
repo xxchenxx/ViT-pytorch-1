@@ -107,6 +107,8 @@ class Masking(object):
                     self.log.info("Warning: there is no module pruned")
                     module.attention_mask.data = torch.zeros_like(module.attention_mask.data)
 
+        self.log.info("After death")
+        self.print_nonzero_counts(target_density=(1 - self.death_rate) * self.density)
         if not first_time:
             # grow
             for name, module in model.named_modules():
