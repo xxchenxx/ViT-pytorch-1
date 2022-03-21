@@ -75,11 +75,9 @@ class Masking(object):
                 else:
                     scores = self.score_collect_taylor_distance(train_loader, model, model_pretrain, distance_mode=True)
                 self.truncate_weights(scores, model, first_time=True, first_time_claim_density=target_density)
-            self.print_nonzero_counts(target_density=target_density)
+                self.print_nonzero_counts(target_density=target_density)
         else:
             raise ValueError("No init method of {}".format(self.init_method))
-
-        self.print_nonzero_counts()
 
     def step(self, train_loader, model):
         if self.death_mode == "avg_magni_var":
