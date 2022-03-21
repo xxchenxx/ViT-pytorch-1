@@ -38,7 +38,6 @@ class Masking(object):
         self.init_iter_time = init_iter_time
 
         assert growth_mode == 'random'
-        assert death_mode == 'avg_magni_var'
 
         self.masks = {}
         self.names = []
@@ -69,7 +68,7 @@ class Masking(object):
             for iter in range(self.init_iter_time):
                 target_density = 1 - exp_prune_ratio_cal(iter + 1, self.init_iter_time, 1 - self.density)
                 self.log.info("prune iteration {}, prune to density of {}".format(iter, target_density))
-                scores = self.score_collect_taylor_distance(train_loader, model, model_pretrain)
+                scores = self.score_collect_taylor_distance(train_loader, model, model_pretrain, distance_mode=True)
                 self.truncate_weights(scores, model, first_time=True, first_time_claim_density=target_density)
         else:
             raise ValueError("No init method of {}".format(self.init_method))
@@ -77,7 +76,12 @@ class Masking(object):
         self.print_nonzero_counts()
 
     def step(self, train_loader, model):
-        scores = self.score_collect(train_loader, model)
+        if self.death_mode == "avg_magni_var":
+            scores = self.score_collect(train_loader, model)
+        elif self.death_mode == "taylor_magni_var":
+            scores = self.score_collect_taylor_distance(train_loader, model)
+        else:
+            raise ValueError("No death_mode of {}".format(self.death_mode))
         self.truncate_weights(scores, model)
         self.print_nonzero_counts()
 
@@ -142,9 +146,7 @@ class Masking(object):
 
         return scores_dict
 
-    def score_collect_taylor_distance(self, train_loader, model, model_pretrain):
-        assert self.death_mode == "avg_magni_var"
-
+    def score_collect_taylor_distance(self, train_loader, model, model_pretrain=None, distance_mode=False):
         criterion = torch.nn.MSELoss()
 
         for name, module in model.named_modules():
@@ -157,10 +159,13 @@ class Masking(object):
             batch = tuple(t.to(self.args.device) for t in batch)
             x, y = batch
 
-            with torch.no_grad():
-                feature_pretrain = model_pretrain(x, return_encoded_feature=True)
-            feature_pruned = model(x, return_encoded_feature=True)
-            loss = criterion(feature_pruned, feature_pretrain)
+            if distance_mode:
+                with torch.no_grad():
+                    feature_pretrain = model_pretrain(x, return_encoded_feature=True)
+                feature_pruned = model(x, return_encoded_feature=True)
+                loss = criterion(feature_pruned, feature_pretrain)
+            else:
+                loss = model(x, y)
 
             to_grads = []
             for module in model.modules():
