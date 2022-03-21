@@ -167,8 +167,7 @@ class Masking(object):
                 if isinstance(module, Attention):
                     to_grads.append(module.attention_probs)
 
-            set_trace()
-            grads = torch.autograd.grad(loss, to_grads, only_inputs=True, retain_graph=False)[0]
+            grads = torch.autograd.grad(loss, to_grads, only_inputs=True, retain_graph=False)
             idx = 0
             for module in model.modules():
                 if isinstance(module, Attention):
