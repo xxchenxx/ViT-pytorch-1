@@ -48,10 +48,11 @@ ACT2FN = {"gelu": torch.nn.functional.gelu, "relu": torch.nn.functional.relu, "s
 
 
 class Attention(nn.Module):
-    def __init__(self, config, vis, prune_mode=False, n_tokens=1):
+    def __init__(self, config, vis, prune_mode=False, prune_after_softmax=False, n_tokens=1):
         super(Attention, self).__init__()
         self.vis = vis
         self.prune_mode = prune_mode
+        self.prune_after_softmax = prune_after_softmax
         self.num_attention_heads = config.transformer["num_heads"]
         self.attention_head_size = int(config.hidden_size / self.num_attention_heads)
         self.all_head_size = self.num_attention_heads * self.attention_head_size
@@ -89,10 +90,14 @@ class Attention(nn.Module):
         attention_scores = torch.matmul(query_layer, key_layer.transpose(-1, -2))
         attention_scores = attention_scores / math.sqrt(self.attention_head_size)
         
-        if self.prune_mode:
+        if self.prune_mode and (not self.self.prune_after_softmax):
             attention_scores.masked_fill_(~self.attention_mask.detach(), float('-inf'))
 
         attention_probs = self.softmax(attention_scores)
+
+        if self.prune_mode and self.self.prune_after_softmax:
+            print("prune after SM")
+            attention_scores.masked_fill_(~self.attention_mask.detach(), 0)
 
         if self.record_attention_probs:
             self.attention_probs = attention_probs
@@ -184,13 +189,13 @@ class Embeddings(nn.Module):
 
 
 class Block(nn.Module):
-    def __init__(self, config, vis, prune_mode=False, n_tokens=1):
+    def __init__(self, config, vis, prune_mode=False, prune_after_softmax=False, n_tokens=1):
         super(Block, self).__init__()
         self.hidden_size = config.hidden_size
         self.attention_norm = LayerNorm(config.hidden_size, eps=1e-6)
         self.ffn_norm = LayerNorm(config.hidden_size, eps=1e-6)
         self.ffn = Mlp(config)
-        self.attn = Attention(config, vis, prune_mode, n_tokens)
+        self.attn = Attention(config, vis, prune_mode, prune_after_softmax, n_tokens)
 
     def forward(self, x):
         h = x
@@ -243,14 +248,14 @@ class Block(nn.Module):
 
 
 class Encoder(nn.Module):
-    def __init__(self, config, vis, prune_mode=False, n_tokens=1):
+    def __init__(self, config, vis, prune_mode=False, prune_after_softmax=False, n_tokens=1):
         super(Encoder, self).__init__()
         self.vis = vis
         self.prune_mode = prune_mode
         self.layer = nn.ModuleList()
         self.encoder_norm = LayerNorm(config.hidden_size, eps=1e-6)
         for _ in range(config.transformer["num_layers"]):
-            layer = Block(config, vis, prune_mode, n_tokens)
+            layer = Block(config, vis, prune_mode, prune_after_softmax, n_tokens)
             self.layer.append(copy.deepcopy(layer))
 
     def forward(self, hidden_states):
@@ -264,10 +269,10 @@ class Encoder(nn.Module):
 
 
 class Transformer(nn.Module):
-    def __init__(self, config, img_size, vis, prune_mode=False):
+    def __init__(self, config, img_size, vis, prune_mode=False, prune_after_softmax=False):
         super(Transformer, self).__init__()
         self.embeddings = Embeddings(config, img_size=img_size)
-        self.encoder = Encoder(config, vis, prune_mode, n_tokens=self.embeddings.position_embeddings.shape[1])
+        self.encoder = Encoder(config, vis, prune_mode, prune_after_softmax=prune_after_softmax, n_tokens=self.embeddings.position_embeddings.shape[1])
 
     def forward(self, input_ids):
         embedding_output = self.embeddings(input_ids)
@@ -276,14 +281,16 @@ class Transformer(nn.Module):
 
 
 class VisionTransformer(nn.Module):
-    def __init__(self, config, img_size=224, num_classes=21843, zero_head=False, vis=False, prune_mode=False):
+    def __init__(self, config, img_size=224, num_classes=21843, zero_head=False, vis=False,
+                 prune_mode=False, prune_after_softmax=False):
         super(VisionTransformer, self).__init__()
         self.num_classes = num_classes
         self.zero_head = zero_head
         self.classifier = config.classifier
         self.prune_mode = prune_mode
+        self.prune_after_softmax = prune_after_softmax
 
-        self.transformer = Transformer(config, img_size, vis, prune_mode)
+        self.transformer = Transformer(config, img_size, vis, prune_mode, prune_after_softmax)
         self.head = Linear(config.hidden_size, num_classes)
 
     def forward(self, x, labels=None, return_encoded_feature=False):

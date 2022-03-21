@@ -251,6 +251,7 @@ def main():
     parser.add_argument('--prune_end', type=int, default=8000, help="the end of pruning")
     parser.add_argument('--prune_init_method', type=str, default="avg_magni_var", choices=["avg_magni_var", "taylor_change_magni_var"], help="the init pruning method")
     parser.add_argument('--prune_init_iter_time', type=int, default=5, help="the init iter time, works for [taylor_change_magni_var, ]")
+    parser.add_argument('--prune_after_softmax', action="store_true", help="if prune after softmax")
 
     args = parser.parse_args()
 

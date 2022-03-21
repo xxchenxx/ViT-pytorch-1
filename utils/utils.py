@@ -40,7 +40,8 @@ def setup(args, log):
 
     num_classes = 10 if args.dataset == "cifar10" else 100
 
-    model = VisionTransformer(config, args.img_size, zero_head=True, num_classes=num_classes, prune_mode=args.prune)
+    model = VisionTransformer(config, args.img_size, zero_head=True, num_classes=num_classes,
+                              prune_mode=args.prune, prune_after_softmax=args.prune_after_softmax)
     model.load_from(np.load(args.pretrained_dir))
     model.to(args.device)
     num_params = count_parameters(model)
