@@ -134,6 +134,10 @@ def train(args, model, masking, log, writer):
             batch = tuple(t.to(args.device) for t in batch)
 
             x, y = batch
+            for name, p in model.named_parameters():
+                if torch.isnan(p.data).sum() > 0:
+                    print(name)
+                    print(p)
             loss = model(x, y)
 
             if args.gradient_accumulation_steps > 1:
@@ -153,11 +157,12 @@ def train(args, model, masking, log, writer):
                 # if args.fp16:
                 #     torch.nn.utils.clip_grad_norm_(amp.master_params(optimizer), args.max_grad_norm)
                 # else:
-                torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
+                torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm, error_if_nonfinite=True)
                 scheduler.step()
                 optimizer.step()
                 optimizer.zero_grad()
                 global_step += 1
+                    
 
                 if global_step % 50 == 0:
                     log.info("Training ({}/{} Steps)\t(loss={:2.5f})\tData time={:.2f}({:.2f})\tBatch time={:.2f}({:.2f})".format(

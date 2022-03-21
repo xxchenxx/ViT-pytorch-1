@@ -69,14 +69,16 @@ class Masking(object):
                 if len(threshold) > 1:
                     module.attention_mask.data = (scores[name] >= threshold[-1]) & module.attention_mask.data
                 else:
-                    module.attention_mask.data = torch.zeros_like(module.attention_mask.data)
+                    module.attention_mask.data = (scores[name] >= threshold) & module.attention_mask.data
 
         if not first_time:
             # grow
             for name, module in model.named_modules():
                 if name in scores:
                     total_regrowth = self.density * module.attention_mask.numel() - module.attention_mask.float().sum().item()
+                    print(total_regrowth)
                     n = (~module.attention_mask.data).float().sum().item()
+                    print(n)
                     expeced_growth_probability = (total_regrowth / n)
                     new_weights = torch.rand(module.attention_mask.data.shape).cuda() < expeced_growth_probability
                     module.attention_mask.data = module.attention_mask.data | new_weights
@@ -148,7 +150,7 @@ class TaylorMasking(Masking):
             for module in model.modules():
                 if isinstance(module, Attention):
                     to_grads.append(module.attention_probs)
-            grads = torch.autograd.grad(loss, to_grads, only_inputs=True, retain_graph=True)[0]
+            grads = torch.autograd.grad(loss, to_grads, only_inputs=True, retain_graph=True)
             idx = 0
             for module in model.modules():
                 if isinstance(module, Attention):
@@ -165,12 +167,13 @@ class TaylorMasking(Masking):
                 avg = module.record_attn_taylor.avg
                 var = module.record_attn_taylor.var
 
-                # normalize
                 avg_norm = (avg - avg.mean()) / torch.clamp(avg.std(), min=1e-7)
                 var_norm = (var - var.mean()) / torch.clamp(var.std(), min=1e-7)
                 score = self.avg_magni_var_alpha * avg_norm + (1 - self.avg_magni_var_alpha) * var_norm
 
                 scores_dict[name] = score
+
                 module.record_attn_mean_var = None
+                del module.attention_probs
 
         return scores_dict

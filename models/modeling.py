@@ -21,7 +21,7 @@ import models.configs as configs
 
 from .modeling_resnet import ResNetV2
 
-
+from maskedtensor import masked_tensor
 
 ATTENTION_Q = "MultiHeadDotProductAttention_1/query"
 ATTENTION_K = "MultiHeadDotProductAttention_1/key"
@@ -90,10 +90,11 @@ class Attention(nn.Module):
         attention_scores = attention_scores / math.sqrt(self.attention_head_size)
         
         if self.prune_mode:
-            attention_scores.masked_fill_(~self.attention_mask.detach(), float('-inf'))
-
-        attention_probs = self.softmax(attention_scores)
-
+            attention_mask = self.attention_mask.detach()
+            attention_scores.masked_fill_(~attention_mask, float('-10e30'))
+            #attention_scores = masked_tensor(attention_scores, attention_mask)
+        attention_probs =  self.softmax(attention_scores)
+        #attention_probs = torch.nan_to_num(attention_probs)
         if self.record_attention_probs:
             self.attention_probs = attention_probs
         if self.prune_mode and (self.record_attn_mean_var is not None):
@@ -101,7 +102,6 @@ class Attention(nn.Module):
 
         weights = attention_probs if self.vis else None
         attention_probs = self.attn_dropout(attention_probs)
-
         context_layer = torch.matmul(attention_probs, value_layer)
         context_layer = context_layer.permute(0, 2, 1, 3).contiguous()
         new_context_layer_shape = context_layer.size()[:-2] + (self.all_head_size,)
@@ -289,7 +289,6 @@ class VisionTransformer(nn.Module):
     def forward(self, x, labels=None):
         x, attn_weights = self.transformer(x)
         logits = self.head(x[:, 0])
-
         if labels is not None:
             loss_fct = CrossEntropyLoss()
             loss = loss_fct(logits.view(-1, self.num_classes), labels.view(-1))
