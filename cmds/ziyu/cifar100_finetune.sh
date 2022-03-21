@@ -51,9 +51,9 @@ n_gpu=4
 
 lr=1e-2
 prune_dense_ratio=0.5
-prune_death_rate=1.0
+prune_death_rate=0.7
 prune_avg_magni_var_alpha=1.0
-prune_inv=200
+prune_inv=10000
 prune_end=8000
 
 init_iter=5

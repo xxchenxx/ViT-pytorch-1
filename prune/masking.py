@@ -60,7 +60,7 @@ class Masking(object):
         elif self.init_method == "taylor_change_magni_var":
             # init a pretrain model
             model_pretrain = copy.deepcopy(model)
-            for param in model_pretrain:
+            for param in model_pretrain.parameters():
                 param.requires_grad = False
             model_pretrain.eval()
             model.eval()
