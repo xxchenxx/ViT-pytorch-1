@@ -21,10 +21,10 @@ from utils.data_utils import get_loader
 from utils.dist_util import get_world_size
 from utils.utils import *
 
-from prune.masking import Masking
+from attn_estimator.mean_estimator import MeanEstimator
 
 import time
-
+from pdb import set_trace
 
 def valid(args, model, writer, test_loader, global_step, log):
     # Validation!
@@ -78,7 +78,7 @@ def valid(args, model, writer, test_loader, global_step, log):
     return accuracy
 
 
-def train(args, model, masking, log, writer):
+def train(args, model, log, writer):
     batch_time = AverageMeter()
     data_time = AverageMeter()
 
@@ -86,6 +86,10 @@ def train(args, model, masking, log, writer):
 
     # Prepare dataset
     train_loader, test_loader = get_loader(args)
+
+    if args.attn_replace == "parameter":
+        estimator = MeanEstimator(log=log)
+        estimator.mean_estimator(train_loader, model)
 
     # Prepare optimizer and scheduler
     optimizer = torch.optim.SGD(model.parameters(),
@@ -106,7 +110,7 @@ def train(args, model, masking, log, writer):
 
     # Distributed training
     if args.local_rank != -1:
-        model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.local_rank])
+        model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.local_rank], find_unused_parameters=True)
 
     # Train!
     log.info("***** Running training *****")
@@ -121,10 +125,6 @@ def train(args, model, masking, log, writer):
     set_seed(args)  # Added here for reproducibility (even between python 2 and 3)
     losses = AverageMeter()
     global_step, best_acc = 0, 0
-
-    if args.prune:
-        masking.init(train_loader, model)
-        model.train()
 
     while True:
         model.train()
@@ -172,9 +172,6 @@ def train(args, model, masking, log, writer):
                         best_acc = accuracy
                     model.train()
                 torch.distributed.barrier()
-                if global_step % args.prune_inv == 0 and (global_step <= args.prune_end):
-                    masking.step(train_loader, model)
-                    model.train()
 
                 if global_step % t_total == 0:
                     break
@@ -242,17 +239,8 @@ def main():
                              "0 (default value): dynamic loss scaling.\n"
                              "Positive power of 2: static loss scaling value.\n")
 
-    # prune
-    parser.add_argument('--prune', action='store_true', help="Whether to use 16-bit float precision instead of 32-bit")
-    parser.add_argument('--prune_dense_ratio', type=float, default=0.5, help="the target density")
-    parser.add_argument('--prune_death_rate', type=float, default=0.1, help="the target density")
-    parser.add_argument('--prune_death_mode', type=str, default="avg_magni_var", choices=["avg_magni_var", "taylor_magni_var"], help="the death pruning method")
-    parser.add_argument('--prune_avg_magni_var_alpha', type=float, default=0.5, help="the weight of mean in pruning")
-    parser.add_argument('--prune_inv', type=int, default=500, help="the step inv for conducting pruning")
-    parser.add_argument('--prune_end', type=int, default=8000, help="the end of pruning")
-    parser.add_argument('--prune_init_method', type=str, default="avg_magni_var", choices=["avg_magni_var", "taylor_change_magni_var"], help="the init pruning method")
-    parser.add_argument('--prune_init_iter_time', type=int, default=5, help="the init iter time, works for [taylor_change_magni_var, ]")
-    parser.add_argument('--prune_after_softmax', action="store_true", help="if prune after softmax")
+    # attn_replace
+    parser.add_argument('--attn_replace', default="none", type=str, help="Whether to estimate the attn ")
 
     args = parser.parse_args()
 
@@ -288,15 +276,9 @@ def main():
 
     # Model & Tokenizer Setup
     args, model = setup(args, log)
-    masking = None
-    if args.prune:
-        masking = Masking(model, death_rate=args.prune_death_rate, density=args.prune_dense_ratio,
-                          init_method=args.prune_init_method, init_iter_time=args.prune_init_iter_time,
-                          death_mode=args.prune_death_mode, death_rate_decay=None, args=args,
-                          avg_magni_var_alpha=args.prune_avg_magni_var_alpha, log=log)
 
     # Training
-    train(args, model, masking, log, writer)
+    train(args, model, log, writer)
 
 
 if __name__ == "__main__":

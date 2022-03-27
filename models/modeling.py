@@ -16,6 +16,7 @@ import numpy as np
 from torch.nn import CrossEntropyLoss, Dropout, Softmax, Linear, Conv2d, LayerNorm
 from torch.nn.modules.utils import _pair
 from scipy import ndimage
+from pdb import set_trace
 
 import models.configs as configs
 
@@ -48,11 +49,9 @@ ACT2FN = {"gelu": torch.nn.functional.gelu, "relu": torch.nn.functional.relu, "s
 
 
 class Attention(nn.Module):
-    def __init__(self, config, vis, prune_mode=False, prune_after_softmax=False, n_tokens=1):
+    def __init__(self, config, vis, attn_replace="none", n_tokens=1):
         super(Attention, self).__init__()
         self.vis = vis
-        self.prune_mode = prune_mode
-        self.prune_after_softmax = prune_after_softmax
         self.num_attention_heads = config.transformer["num_heads"]
         self.attention_head_size = int(config.hidden_size / self.num_attention_heads)
         self.all_head_size = self.num_attention_heads * self.attention_head_size
@@ -65,49 +64,50 @@ class Attention(nn.Module):
         self.attn_dropout = Dropout(config.transformer["attention_dropout_rate"])
         self.proj_dropout = Dropout(config.transformer["attention_dropout_rate"])
 
-        if self.prune_mode:
-            self.attention_mask = nn.Parameter(torch.ones(1, self.num_attention_heads,
-                                                          n_tokens, n_tokens).bool(), requires_grad=False)
-            self.record_attn_mean_var = None
+        self.attn_replace = attn_replace
+        if attn_replace == "parameter":
+            self.A = torch.nn.Parameter(torch.zeros(1, self.num_attention_heads, n_tokens, n_tokens))
 
         self.softmax = Softmax(dim=-1)
         self.attention_probs = None
-        self.record_attention_probs = False
+
     def transpose_for_scores(self, x):
         new_x_shape = x.size()[:-1] + (self.num_attention_heads, self.attention_head_size)
         x = x.view(*new_x_shape)
         return x.permute(0, 2, 1, 3)
 
     def forward(self, hidden_states):
-        mixed_query_layer = self.query(hidden_states)
-        mixed_key_layer = self.key(hidden_states)
-        mixed_value_layer = self.value(hidden_states)
+        if self.attn_replace == "none":
+            mixed_query_layer = self.query(hidden_states)
+            mixed_key_layer = self.key(hidden_states)
 
-        query_layer = self.transpose_for_scores(mixed_query_layer)
-        key_layer = self.transpose_for_scores(mixed_key_layer)
-        value_layer = self.transpose_for_scores(mixed_value_layer)
-        #print(query_layer.shape)
-        attention_scores = torch.matmul(query_layer, key_layer.transpose(-1, -2))
-        attention_scores = attention_scores / math.sqrt(self.attention_head_size)
-        
-        if self.prune_mode and (not self.prune_after_softmax):
-            attention_scores.masked_fill_(~self.attention_mask.detach(), float('-inf'))
+            query_layer = self.transpose_for_scores(mixed_query_layer)
+            key_layer = self.transpose_for_scores(mixed_key_layer)
+
+            #print(query_layer.shape)
+            attention_scores = torch.matmul(query_layer, key_layer.transpose(-1, -2))
+            attention_scores = attention_scores / math.sqrt(self.attention_head_size)
+
             attention_probs = self.softmax(attention_scores)
+            if self.record_attn_mean_var is not None:
+                self.record_attn_mean_var.update(attention_probs.detach())
 
-        if self.prune_mode and self.prune_after_softmax:
-            # print("prune after SM")
-            attention_probs_ = self.softmax(attention_scores)
-            attention_probs = (~self.attention_mask.detach()).float() * attention_probs_
+            weights = attention_probs if self.vis else None
+            attention_probs = self.attn_dropout(attention_probs)
 
-        if self.record_attention_probs:
-            self.attention_probs = attention_probs
-        if self.prune_mode and (self.record_attn_mean_var is not None):
-            self.record_attn_mean_var.update(attention_probs.detach())
+            mixed_value_layer = self.value(hidden_states)
+            value_layer = self.transpose_for_scores(mixed_value_layer)
 
-        weights = attention_probs if self.vis else None
-        attention_probs = self.attn_dropout(attention_probs)
+            context_layer = torch.matmul(attention_probs, value_layer)
+        elif self.attn_replace == "parameter":
+            weights = None
+            mixed_value_layer = self.value(hidden_states)
+            value_layer = self.transpose_for_scores(mixed_value_layer)
 
-        context_layer = torch.matmul(attention_probs, value_layer)
+            context_layer = self.A @ value_layer
+        else:
+            raise ValueError("Cannot recognize the self.attn_replace of {}".format(self.attn_replace))
+
         context_layer = context_layer.permute(0, 2, 1, 3).contiguous()
         new_context_layer_shape = context_layer.size()[:-2] + (self.all_head_size,)
         context_layer = context_layer.view(*new_context_layer_shape)
@@ -189,13 +189,13 @@ class Embeddings(nn.Module):
 
 
 class Block(nn.Module):
-    def __init__(self, config, vis, prune_mode=False, prune_after_softmax=False, n_tokens=1):
+    def __init__(self, config, vis, attn_replace, n_tokens=1):
         super(Block, self).__init__()
         self.hidden_size = config.hidden_size
         self.attention_norm = LayerNorm(config.hidden_size, eps=1e-6)
         self.ffn_norm = LayerNorm(config.hidden_size, eps=1e-6)
         self.ffn = Mlp(config)
-        self.attn = Attention(config, vis, prune_mode, prune_after_softmax, n_tokens)
+        self.attn = Attention(config, vis, attn_replace, n_tokens)
 
     def forward(self, x):
         h = x
@@ -248,14 +248,13 @@ class Block(nn.Module):
 
 
 class Encoder(nn.Module):
-    def __init__(self, config, vis, prune_mode=False, prune_after_softmax=False, n_tokens=1):
+    def __init__(self, config, vis, attn_replace, n_tokens=1):
         super(Encoder, self).__init__()
         self.vis = vis
-        self.prune_mode = prune_mode
         self.layer = nn.ModuleList()
         self.encoder_norm = LayerNorm(config.hidden_size, eps=1e-6)
         for _ in range(config.transformer["num_layers"]):
-            layer = Block(config, vis, prune_mode, prune_after_softmax, n_tokens)
+            layer = Block(config, vis, attn_replace, n_tokens)
             self.layer.append(copy.deepcopy(layer))
 
     def forward(self, hidden_states):
@@ -269,10 +268,10 @@ class Encoder(nn.Module):
 
 
 class Transformer(nn.Module):
-    def __init__(self, config, img_size, vis, prune_mode=False, prune_after_softmax=False):
+    def __init__(self, config, img_size, vis, attn_replace="none"):
         super(Transformer, self).__init__()
         self.embeddings = Embeddings(config, img_size=img_size)
-        self.encoder = Encoder(config, vis, prune_mode, prune_after_softmax=prune_after_softmax, n_tokens=self.embeddings.position_embeddings.shape[1])
+        self.encoder = Encoder(config, vis, attn_replace, n_tokens=self.embeddings.position_embeddings.shape[1])
 
     def forward(self, input_ids):
         embedding_output = self.embeddings(input_ids)
@@ -281,16 +280,13 @@ class Transformer(nn.Module):
 
 
 class VisionTransformer(nn.Module):
-    def __init__(self, config, img_size=224, num_classes=21843, zero_head=False, vis=False,
-                 prune_mode=False, prune_after_softmax=False):
+    def __init__(self, config, img_size=224, num_classes=21843, zero_head=False, vis=False, attn_replace="none"):
         super(VisionTransformer, self).__init__()
         self.num_classes = num_classes
         self.zero_head = zero_head
         self.classifier = config.classifier
-        self.prune_mode = prune_mode
-        self.prune_after_softmax = prune_after_softmax
 
-        self.transformer = Transformer(config, img_size, vis, prune_mode, prune_after_softmax)
+        self.transformer = Transformer(config, img_size, vis, attn_replace)
         self.head = Linear(config.hidden_size, num_classes)
 
     def forward(self, x, labels=None, return_encoded_feature=False):
