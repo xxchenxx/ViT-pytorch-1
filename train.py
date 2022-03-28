@@ -106,7 +106,7 @@ def train(args, model, masking, log, writer):
 
     # Distributed training
     if args.local_rank != -1:
-        model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.local_rank])
+        model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.local_rank], find_unused_parameters=True)
 
     # Train!
     log.info("***** Running training *****")
@@ -125,6 +125,14 @@ def train(args, model, masking, log, writer):
     if args.prune:
         masking.init(train_loader, model)
         model.train()
+
+    if args.bitfit:
+        for name, parameter in model.named_parameters():
+            print(name)
+            if "bias" in name:
+                parameter.requires_grad = True
+            else:
+                parameter.requires_grad = False
 
     while True:
         model.train()
@@ -253,6 +261,9 @@ def main():
     parser.add_argument('--prune_init_method', type=str, default="avg_magni_var", choices=["avg_magni_var", "taylor_change_magni_var"], help="the init pruning method")
     parser.add_argument('--prune_init_iter_time', type=int, default=5, help="the init iter time, works for [taylor_change_magni_var, ]")
     parser.add_argument('--prune_after_softmax', action="store_true", help="if prune after softmax")
+
+    # bitfit
+    parser.add_argument('--bitfit', action="store_true", help="if employing bitfit")
 
     args = parser.parse_args()
 

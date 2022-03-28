@@ -89,15 +89,18 @@ class Attention(nn.Module):
         #print(query_layer.shape)
         attention_scores = torch.matmul(query_layer, key_layer.transpose(-1, -2))
         attention_scores = attention_scores / math.sqrt(self.attention_head_size)
-        
-        if self.prune_mode and (not self.prune_after_softmax):
-            attention_scores.masked_fill_(~self.attention_mask.detach(), float('-inf'))
-            attention_probs = self.softmax(attention_scores)
 
-        if self.prune_mode and self.prune_after_softmax:
-            # print("prune after SM")
-            attention_probs_ = self.softmax(attention_scores)
-            attention_probs = (~self.attention_mask.detach()).float() * attention_probs_
+        if self.prune_mode:
+            if (not self.prune_after_softmax):
+                attention_scores.masked_fill_(~self.attention_mask.detach(), float('-inf'))
+                attention_probs = self.softmax(attention_scores)
+
+            if self.prune_after_softmax:
+                # print("prune after SM")
+                attention_probs_ = self.softmax(attention_scores)
+                attention_probs = (~self.attention_mask.detach()).float() * attention_probs_
+        else:
+            attention_probs = self.softmax(attention_scores)
 
         if self.record_attention_probs:
             self.attention_probs = attention_probs

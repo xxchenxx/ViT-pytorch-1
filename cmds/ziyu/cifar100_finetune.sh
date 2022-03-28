@@ -100,11 +100,11 @@ train.py --name cifar100-lr${lr}-rigL_D${prune_dense_ratio}Dth${prune_death_rate
 save_dir="/mnt/models/Ziyu_model/M2M_ViT"
 #save_dir="."
 
-devices="0,1,2,3"
+#devices="0,1,2,3"
 #devices="4,5,6,7"
 #devices="8,9,10,11"
-#devices="12,13,14,15"
-port=6032
+devices="12,13,14,15"
+port=6049
 n_gpu=4
 
 lr=1e-2
@@ -114,7 +114,7 @@ prune_avg_magni_var_alpha=1.0
 prune_inv=200
 prune_end=8000
 
-init_iter=5
+init_iter=10
 
 CUDA_VISIBLE_DEVICES=${devices} python3 -m torch.distributed.launch --nproc_per_node=${n_gpu} --master_port ${port}  \
 train.py --name cifar100-lr${lr}-rigL_taylor_D${prune_dense_ratio}Dth${prune_death_rate}Walpha${prune_avg_magni_var_alpha}Inv${prune_inv}To${prune_end}-initTaylorDistAlpha${prune_avg_magni_var_alpha}Iter${init_iter} \
@@ -126,3 +126,8 @@ train.py --name cifar100-lr${lr}-rigL_taylor_D${prune_dense_ratio}Dth${prune_dea
 
 ##############################
 --train_batch_size 2 --eval_batch_size 2
+
+
+bash
+conda activate mae
+cd /home/t-xiaochen/ViT-pytorch-1
