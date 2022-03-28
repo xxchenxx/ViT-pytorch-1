@@ -49,12 +49,13 @@ ACT2FN = {"gelu": torch.nn.functional.gelu, "relu": torch.nn.functional.relu, "s
 
 
 class Attention(nn.Module):
-    def __init__(self, config, vis, attn_replace="none", n_tokens=1):
+    def __init__(self, config, vis, attn_replace="none", n_tokens=1, cls_token_stay=False):
         super(Attention, self).__init__()
         self.vis = vis
         self.num_attention_heads = config.transformer["num_heads"]
         self.attention_head_size = int(config.hidden_size / self.num_attention_heads)
         self.all_head_size = self.num_attention_heads * self.attention_head_size
+        self.cls_token_stay = cls_token_stay
 
         self.query = Linear(config.hidden_size, self.all_head_size)
         self.key = Linear(config.hidden_size, self.all_head_size)
@@ -66,45 +67,94 @@ class Attention(nn.Module):
 
         self.attn_replace = attn_replace
         if attn_replace == "parameter":
-            self.A = torch.nn.Parameter(torch.zeros(1, self.num_attention_heads, n_tokens, n_tokens))
+            self.A = torch.nn.Parameter(torch.zeros(self.num_attention_heads, n_tokens, n_tokens))
 
         self.softmax = Softmax(dim=-1)
         self.attention_probs = None
+        self.distance_measuring_mode = False
+
+        self.attn_dist = None
+        self.context_dist = None
+        self.attn_norm = None
+        self.context_norm = None
 
     def transpose_for_scores(self, x):
         new_x_shape = x.size()[:-1] + (self.num_attention_heads, self.attention_head_size)
         x = x.view(*new_x_shape)
         return x.permute(0, 2, 1, 3)
 
-    def forward(self, hidden_states):
-        if self.attn_replace == "none":
-            mixed_query_layer = self.query(hidden_states)
+    def normal_infer_attn(self, hidden_states):
+
+        mixed_query_layer = self.query(hidden_states)
+        mixed_key_layer = self.key(hidden_states)
+
+        query_layer = self.transpose_for_scores(mixed_query_layer)
+        key_layer = self.transpose_for_scores(mixed_key_layer)
+
+        # print(query_layer.shape)
+        attention_scores = torch.matmul(query_layer, key_layer.transpose(-1, -2))
+        attention_scores = attention_scores / math.sqrt(self.attention_head_size)
+
+        attention_probs = self.softmax(attention_scores)
+        weights = attention_probs if self.vis else None
+
+        attention_probs = self.attn_dropout(attention_probs)
+        if self.record_attn_mean_var is not None:
+            self.record_attn_mean_var.update(attention_probs.detach())
+
+        mixed_value_layer = self.value(hidden_states)
+        value_layer = self.transpose_for_scores(mixed_value_layer)
+
+        context_layer = torch.matmul(attention_probs, value_layer)
+
+        return context_layer, attention_probs
+
+    def parameter_infer_attn(self, hidden_states):
+        if not self.cls_token_stay:
+            mixed_value_layer = self.value(hidden_states)
+            value_layer = self.transpose_for_scores(mixed_value_layer)
+
+            context_layer = self.A.unsqueeze(0) @ value_layer
+        else:
+            # query of cls token remains
+            mixed_query_layer = self.query(hidden_states[:, 0:1])
             mixed_key_layer = self.key(hidden_states)
 
             query_layer = self.transpose_for_scores(mixed_query_layer)
             key_layer = self.transpose_for_scores(mixed_key_layer)
 
-            #print(query_layer.shape)
+            # print(query_layer.shape)
             attention_scores = torch.matmul(query_layer, key_layer.transpose(-1, -2))
             attention_scores = attention_scores / math.sqrt(self.attention_head_size)
 
             attention_probs = self.softmax(attention_scores)
-            if self.record_attn_mean_var is not None:
-                self.record_attn_mean_var.update(attention_probs.detach())
-
             weights = attention_probs if self.vis else None
+
+            # inference cls token
             attention_probs = self.attn_dropout(attention_probs)
+            b, h, _, _ = attention_probs.shape
+            attention_probs = torch.cat([attention_probs, self.A.unsqueeze(0).expand([b, -1, -1, -1])[:, :, 1:]], dim=2)
 
             mixed_value_layer = self.value(hidden_states)
             value_layer = self.transpose_for_scores(mixed_value_layer)
 
             context_layer = torch.matmul(attention_probs, value_layer)
-        elif self.attn_replace == "parameter":
-            weights = None
-            mixed_value_layer = self.value(hidden_states)
-            value_layer = self.transpose_for_scores(mixed_value_layer)
 
-            context_layer = self.A @ value_layer
+        return context_layer, self.A.data.unsqueeze(0)
+
+    def forward(self, hidden_states):
+        if self.attn_replace == "none":
+            context_layer, weights = self.normal_infer_attn(hidden_states)
+        elif self.attn_replace == "parameter":
+            context_layer, weights = self.parameter_infer_attn(hidden_states)
+            if self.distance_measuring_mode:
+                with torch.no_grad():
+                    context_layer_origin, weights_origin = self.normal_infer_attn(hidden_states)
+
+                self.attn_dist = torch.linalg.norm(weights - weights_origin, dim=[1, 2, 3]).mean()
+                self.context_dist = torch.linalg.norm(context_layer - context_layer_origin, dim=[1, 2, 3]).mean()
+                self.attn_norm = torch.linalg.norm(weights_origin, dim=[1, 2, 3]).mean().detach()
+                self.context_norm = torch.linalg.norm(context_layer_origin, dim=[1, 2, 3]).mean().detach()
         else:
             raise ValueError("Cannot recognize the self.attn_replace of {}".format(self.attn_replace))
 
@@ -189,13 +239,13 @@ class Embeddings(nn.Module):
 
 
 class Block(nn.Module):
-    def __init__(self, config, vis, attn_replace, n_tokens=1):
+    def __init__(self, config, vis, attn_replace, n_tokens=1, cls_token_stay=False):
         super(Block, self).__init__()
         self.hidden_size = config.hidden_size
         self.attention_norm = LayerNorm(config.hidden_size, eps=1e-6)
         self.ffn_norm = LayerNorm(config.hidden_size, eps=1e-6)
         self.ffn = Mlp(config)
-        self.attn = Attention(config, vis, attn_replace, n_tokens)
+        self.attn = Attention(config, vis, attn_replace, n_tokens, cls_token_stay=cls_token_stay)
 
     def forward(self, x):
         h = x
@@ -248,13 +298,13 @@ class Block(nn.Module):
 
 
 class Encoder(nn.Module):
-    def __init__(self, config, vis, attn_replace, n_tokens=1):
+    def __init__(self, config, vis, attn_replace, n_tokens=1, cls_token_stay=False):
         super(Encoder, self).__init__()
         self.vis = vis
         self.layer = nn.ModuleList()
         self.encoder_norm = LayerNorm(config.hidden_size, eps=1e-6)
         for _ in range(config.transformer["num_layers"]):
-            layer = Block(config, vis, attn_replace, n_tokens)
+            layer = Block(config, vis, attn_replace, n_tokens, cls_token_stay=cls_token_stay)
             self.layer.append(copy.deepcopy(layer))
 
     def forward(self, hidden_states):
@@ -268,10 +318,10 @@ class Encoder(nn.Module):
 
 
 class Transformer(nn.Module):
-    def __init__(self, config, img_size, vis, attn_replace="none"):
+    def __init__(self, config, img_size, vis, attn_replace="none", cls_token_stay=False):
         super(Transformer, self).__init__()
         self.embeddings = Embeddings(config, img_size=img_size)
-        self.encoder = Encoder(config, vis, attn_replace, n_tokens=self.embeddings.position_embeddings.shape[1])
+        self.encoder = Encoder(config, vis, attn_replace, n_tokens=self.embeddings.position_embeddings.shape[1], cls_token_stay=cls_token_stay)
 
     def forward(self, input_ids):
         embedding_output = self.embeddings(input_ids)
@@ -280,13 +330,13 @@ class Transformer(nn.Module):
 
 
 class VisionTransformer(nn.Module):
-    def __init__(self, config, img_size=224, num_classes=21843, zero_head=False, vis=False, attn_replace="none"):
+    def __init__(self, config, img_size=224, num_classes=21843, zero_head=False, vis=False, attn_replace="none", cls_token_stay=False):
         super(VisionTransformer, self).__init__()
         self.num_classes = num_classes
         self.zero_head = zero_head
         self.classifier = config.classifier
 
-        self.transformer = Transformer(config, img_size, vis, attn_replace)
+        self.transformer = Transformer(config, img_size, vis, attn_replace, cls_token_stay=cls_token_stay)
         self.head = Linear(config.hidden_size, num_classes)
 
     def forward(self, x, labels=None, return_encoded_feature=False):

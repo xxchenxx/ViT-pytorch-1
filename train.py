@@ -22,9 +22,11 @@ from utils.dist_util import get_world_size
 from utils.utils import *
 
 from attn_estimator.mean_estimator import MeanEstimator
+from attn_estimator.attn_distill import validate_distill
 
 import time
 from pdb import set_trace
+
 
 def valid(args, model, writer, test_loader, global_step, log):
     # Validation!
@@ -90,6 +92,10 @@ def train(args, model, log, writer):
     if args.attn_replace == "parameter":
         estimator = MeanEstimator(log=log)
         estimator.mean_estimator(train_loader, model)
+    save_model(args, model, log, name="estimate")
+
+    # check the approximation dist
+    validate_distill(train_loader, model, log)
 
     # Prepare optimizer and scheduler
     optimizer = torch.optim.SGD(model.parameters(),
@@ -241,6 +247,7 @@ def main():
 
     # attn_replace
     parser.add_argument('--attn_replace', default="none", type=str, help="Whether to estimate the attn ")
+    parser.add_argument('--cls_token_stay', action='store_true', help="if employ cls_token_stay ")
 
     args = parser.parse_args()
 

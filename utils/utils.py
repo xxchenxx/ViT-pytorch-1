@@ -3,6 +3,7 @@ import os
 import numpy as np
 import torch
 from models.modeling import VisionTransformer, CONFIGS
+from pdb import set_trace
 
 
 class AverageMeter(object):
@@ -23,15 +24,43 @@ class AverageMeter(object):
         self.avg = self.sum / self.count
 
 
+class AverageDict(object):
+    """Computes and stores the average and current value"""
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        self.dict = None
+        self.sum = 0
+        self.count = 0
+
+    def update(self, val, n=1):
+        val = {k: v.detach() for k, v in val.items()}
+        if self.dict == None:
+            self.dict = val
+        else:
+            self.dict = {k: (val[k] * n + self.dict[k] * self.count) / (self.count + n) for k in self.dict.keys()}
+
+        dict_sum = 0
+        for k, v in self.dict.items():
+            dict_sum += v
+
+        self.val = dict_sum
+        self.sum += dict_sum * n
+        self.count += n
+        self.avg = self.sum / self.count
+
+
 def simple_accuracy(preds, labels):
     return (preds == labels).mean()
 
 
-def save_model(args, model, log):
-    model_to_save = model.module if hasattr(model, 'module') else model
-    model_checkpoint = os.path.join(log.path, "checkpoint_best.pth")
-    torch.save(model_to_save.state_dict(), model_checkpoint)
-    log.info("Saved model checkpoint to [DIR: {}]".format(os.path.join(log.path, args.name)))
+def save_model(args, model, log, name="checkpoint_best"):
+    if torch.distributed.get_rank() == 0:
+        model_to_save = model.module if hasattr(model, 'module') else model
+        model_checkpoint = os.path.join(log.path, "{}.pth".format(name))
+        torch.save(model_to_save.state_dict(), model_checkpoint)
+        log.info("Saved model checkpoint to [DIR: {}]".format(os.path.join(log.path, args.name)))
 
 
 def setup(args, log):
@@ -40,7 +69,7 @@ def setup(args, log):
 
     num_classes = 10 if args.dataset == "cifar10" else 100
 
-    model = VisionTransformer(config, args.img_size, zero_head=True, num_classes=num_classes, attn_replace=args.attn_replace)
+    model = VisionTransformer(config, args.img_size, zero_head=True, num_classes=num_classes, attn_replace=args.attn_replace, cls_token_stay=args.cls_token_stay)
     model.load_from(np.load(args.pretrained_dir))
     model.to(args.device)
     num_params = count_parameters(model)
@@ -102,7 +131,7 @@ class Mat_Avg_Var_Cal(object):
             self.avg = avg
             self.count += n
         else:
-            self.avg = self.avg * (self.count / (self.count + n)) + mat.sum(0) * (n / (self.count + n))
+            self.avg = self.avg * (self.count / (self.count + n)) + mat.sum(0) * (1 / (self.count + n))
             self.count += n
 
         # update var
@@ -144,7 +173,7 @@ class Taylor_Cal(object):
             self.avg = avg
             self.count += n
         else:
-            self.avg = self.avg * (self.count / (self.count + n)) + mat.sum(0) * (n / (self.count + n))
+            self.avg = self.avg * (self.count / (self.count + n)) + mat.sum(0) * (1 / (self.count + n))
             self.count += n
 
         

@@ -25,7 +25,6 @@ class MeanEstimator(object):
         for name, module in model.named_modules():
             if isinstance(module, Attention):
                 module.record_attn_mean_var = Mat_Avg_Var_Cal()
-                module.record_attn_mean_var = Mat_Avg_Var_Cal()
                 module.attn_replace = "none"
 
         model.eval()
