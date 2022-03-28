@@ -1,4 +1,6 @@
 from __future__ import absolute_import, print_function
+
+import torch
 import torch.distributed as dist
 from utils.utils import *
 import time
@@ -28,6 +30,7 @@ def collect_est_attn_distance(model):
     return context_distance_dict, context_norm_dict, attn_distance_dict, attn_norm_dict
 
 
+@torch.no_grad()
 def validate_distill(dataloader, model, log):
     for name, module in model.named_modules():
         if isinstance(module, Attention):
