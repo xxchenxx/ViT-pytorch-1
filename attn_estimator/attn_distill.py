@@ -32,7 +32,6 @@ def validate_distill(dataloader, model, log):
     for name, module in model.named_modules():
         if isinstance(module, Attention):
             module.distance_measuring_mode = True
-            module.attn_replace = "none"
 
     model.eval()
     end = time.time()
@@ -95,4 +94,3 @@ def validate_distill(dataloader, model, log):
     for name, module in model.named_modules():
         if isinstance(module, Attention):
             module.distance_measuring_mode = False
-            module.attn_replace = "parameter"

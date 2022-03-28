@@ -155,6 +155,9 @@ class Attention(nn.Module):
                 self.context_dist = torch.linalg.norm(context_layer - context_layer_origin, dim=[1, 2, 3]).mean()
                 self.attn_norm = torch.linalg.norm(weights_origin, dim=[1, 2, 3]).mean().detach()
                 self.context_norm = torch.linalg.norm(context_layer_origin, dim=[1, 2, 3]).mean().detach()
+
+                context_layer = context_layer_origin
+                weights = weights_origin
         else:
             raise ValueError("Cannot recognize the self.attn_replace of {}".format(self.attn_replace))
 
