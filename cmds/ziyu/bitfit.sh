@@ -8,7 +8,7 @@ devices="12,13,14,15"
 port=4573
 n_gpu=4
 
-lr=1e-4
+lr=1e-1
 
 CUDA_VISIBLE_DEVICES=${devices} python3 -m torch.distributed.launch --nproc_per_node=${n_gpu} --master_port ${port}  \
 train.py --name cifar100-lr${lr}-bitfit --learning_rate ${lr} --num_workers 2 --output_dir ${save_dir} \
