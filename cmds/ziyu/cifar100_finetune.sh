@@ -100,10 +100,10 @@ train.py --name cifar100-lr${lr}-rigL_D${prune_dense_ratio}Dth${prune_death_rate
 save_dir="/mnt/models/Ziyu_model/M2M_ViT"
 #save_dir="."
 
-#devices="0,1,2,3"
+devices="0,1,2,3"
 #devices="4,5,6,7"
 #devices="8,9,10,11"
-devices="12,13,14,15"
+#devices="12,13,14,15"
 port=6049
 n_gpu=4
 

@@ -172,7 +172,7 @@ def train(args, model, masking, log, writer):
                         best_acc = accuracy
                     model.train()
                 torch.distributed.barrier()
-                if global_step % args.prune_inv == 0 and (global_step <= args.prune_end):
+                if global_step % args.prune_inv == 0 and (global_step <= args.prune_end) and args.prune:
                     masking.step(train_loader, model)
                     model.train()
 
