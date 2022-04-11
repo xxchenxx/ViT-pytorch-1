@@ -38,7 +38,7 @@ CUDA_VISIBLE_DEVICES=${devices} python3 -m torch.distributed.launch --nproc_per_
 train.py --name cifar100-lr${lr}-fixmlps-pruneStoreAttn${pruneStoreAttn}Act${pruneStoreAct} --learning_rate ${lr} --num_workers 2 --output_dir ${save_dir} \
 --dataset cifar100 --model_type ViT-B_16 --pretrained_dir ${save_dir}/pretrain/ViT-B_16.npz --fix_mlps \
 --attn_store_prune --prune_ratio_attn_mat_store ${pruneStoreAttn} --prune_ratio_act_store ${pruneStoreAct} \
---train_batch_size 4 --eval_batch_size 4
+--train_batch_size 32 --eval_batch_size 32
 
 ##############################
 --train_batch_size 2 --eval_batch_size 2

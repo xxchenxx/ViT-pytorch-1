@@ -12,18 +12,25 @@ import numpy as np
 from torch.nn import CrossEntropyLoss, Dropout, Softmax, Linear, Conv2d, LayerNorm
 
 from pdb import set_trace
+@torch.no_grad()
+def activation_prune(activation, prune_ratio):
+    num_small = int(np.clip(activation[0].numel() * prune_ratio, 1, activation[0].numel()))
+    activation_mag = torch.abs(activation)
+    threshold, _ = torch.kthvalue(activation_mag.flatten(1), num_small)
+    while len(threshold.shape) < len(activation_mag.shape):
+        threshold = threshold.unsqueeze(-1)
+    mask = activation_mag >= threshold
+    return mask
+
 
 class SoftmaxActivationPrune(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x_dense, prune_ratio_attn_mat_store=0):
         dense_out = Softmax(dim=-1)(x_dense)
 
-        num_small = int(np.clip(dense_out.numel() * prune_ratio_attn_mat_store, 1, dense_out.numel()))
-        dense_out_mag = torch.abs(dense_out)
-        threshold = torch.kthvalue(dense_out_mag.flatten(), num_small)
-        mask = dense_out_mag >= threshold[0]
-
+        mask = activation_prune(dense_out, prune_ratio_attn_mat_store)
         sparse_out = mask * dense_out
+
         ctx.sparse_out = sparse_out
         # save sparse activation, but forward with dense
         return dense_out, sparse_out
@@ -72,11 +79,7 @@ class AttentionStoreActivationPrune(nn.Module):
 
     def forward(self, hidden_states):
         # magnitude based prune activation
-        with torch.no_grad():
-            num_small = int(np.clip(hidden_states.numel() * self.prune_ratio_act_store, 1, hidden_states.numel()))
-            hidden_states_mag = torch.abs(hidden_states)
-            threshold = torch.kthvalue(hidden_states_mag.flatten(), num_small)
-            mask = hidden_states_mag >= threshold[0]
+        mask = activation_prune(hidden_states, self.prune_ratio_act_store)
         hidden_states_prune = mask.detach() * hidden_states
 
         # dense activate forward
@@ -97,15 +100,8 @@ class AttentionStoreActivationPrune(nn.Module):
 
         # magnitude based prune activation
         with torch.no_grad():
-            num_small = int(np.clip(query_layer.numel() * self.prune_ratio_act_store, 1, query_layer.numel()))
-            query_layer_mag = torch.abs(query_layer)
-            threshold = torch.kthvalue(query_layer_mag.flatten(), num_small)
-            mask_query = query_layer_mag >= threshold[0]
-
-            num_small = int(np.clip(key_layer.numel() * self.prune_ratio_act_store, 1, key_layer.numel()))
-            key_layer_mag = torch.abs(key_layer)
-            threshold = torch.kthvalue(key_layer_mag.flatten(), num_small)
-            mask_key = key_layer_mag >= threshold[0]
+            mask_query = activation_prune(query_layer, self.prune_ratio_act_store)
+            mask_key = activation_prune(key_layer, self.prune_ratio_act_store)
 
         query_layer_prune = mask_query.detach() * query_layer
         key_layer_prune = mask_key.detach() * key_layer
@@ -132,11 +128,7 @@ class AttentionStoreActivationPrune(nn.Module):
 
 
         # magnitude based prune activation
-        with torch.no_grad():
-            num_small = int(np.clip(value_layer.numel() * self.prune_ratio_act_store, 1, value_layer.numel()))
-            value_layer_mag = torch.abs(value_layer)
-            threshold = torch.kthvalue(value_layer_mag.flatten(), num_small)
-            mask = value_layer_mag >= threshold[0]
+        mask = activation_prune(value_layer, self.prune_ratio_act_store)
         value_layer_prune = mask.detach() * value_layer
 
         # dense activate forward
@@ -152,11 +144,7 @@ class AttentionStoreActivationPrune(nn.Module):
         context_layer = context_layer.view(*new_context_layer_shape)
 
         # magnitude based prune activation
-        with torch.no_grad():
-            num_small = int(np.clip(context_layer.numel() * self.prune_ratio_act_store, 1, context_layer.numel()))
-            context_layer_mag = torch.abs(context_layer)
-            threshold = torch.kthvalue(context_layer_mag.flatten(), num_small)
-            mask = context_layer_mag >= threshold[0]
+        mask = activation_prune(context_layer, self.prune_ratio_act_store)
         context_layer_prune = mask.detach() * context_layer
 
         # dense activate forward
@@ -169,3 +157,13 @@ class AttentionStoreActivationPrune(nn.Module):
         attention_output = self.proj_dropout(attention_output)
         return attention_output, weights
 
+
+def test_activation_prune():
+    a = torch.rand(2, 100, 100)
+    prune_ratio = 0.7
+    mask = activation_prune(a, prune_ratio)
+    print("prune ratio set is {}, real is {}".format(prune_ratio, 1 - mask.float().mean()))
+
+
+if __name__ == "__main__":
+    test_activation_prune()
