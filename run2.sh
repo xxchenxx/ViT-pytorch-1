@@ -16,32 +16,20 @@ pip install ml-collections
 #save_dir="."
 save_dir=${OUTPUT}/MAE_CL/vit
 
-devices="0,1,2,3"
+#devices="0,1,2,3"
 #devices="4,5,6,7"
 #devices="8,9,10,11"
 #devices="12,13,14,15"
 port=4573
 #n_gpu=4
-n_gpu=4
+n_gpu=8
 
-lr=3e-4
-
-CUDA_VISIBLE_DEVICES=${devices} python3 -m torch.distributed.launch --nproc_per_node=${n_gpu} --master_port ${port}  \
-train.py --name cifar100-lr${lr}-fixmlps-pruneStoreAttn${pruneStoreAttn}Act${pruneStoreAct} --learning_rate ${lr} --num_workers 2 --output_dir ${save_dir} \
---dataset cifar100 --model_type ViT-B_16 --pretrained_dir ${save_dir}/pretrain/ViT-B_16.npz --fix_mlps \
---attn_store_prune --prune_ratio_attn_mat_store ${pruneStoreAttn} --prune_ratio_act_store ${pruneStoreAct} &
-
-
-lr=3e-3
-port=4593
-devices="4,5,6,7"
+lr=1e-3
 
 pruneStoreAttn=0.5
 pruneStoreAct=0.5
 
-CUDA_VISIBLE_DEVICES=${devices} python3 -m torch.distributed.launch --nproc_per_node=${n_gpu} --master_port ${port}  \
-train.py --name cifar100-lr${lr}-fixmlps-pruneStoreAttn${pruneStoreAttn}Act${pruneStoreAct} --learning_rate ${lr} --num_workers 2 --output_dir ${save_dir} \
+python3 -m torch.distributed.launch --nproc_per_node=${n_gpu} --master_port ${port}  \
+train.py --name cifar100-lr${lr}-fixmlps-pruneStoreAttn${pruneStoreAttn}Act${pruneStoreAct}-2 --learning_rate ${lr} --num_workers 2 --output_dir ${save_dir} \
 --dataset cifar100 --model_type ViT-B_16 --pretrained_dir ${save_dir}/pretrain/ViT-B_16.npz --fix_mlps \
 --attn_store_prune --prune_ratio_attn_mat_store ${pruneStoreAttn} --prune_ratio_act_store ${pruneStoreAct}
-
-wait
