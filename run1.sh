@@ -14,7 +14,7 @@ pip install ml-collections
 # fix mlps
 #save_dir="/mnt/models/Ziyu_model/M2M_ViT"
 #save_dir="."
-save_dir=${OUTPUT}/MAE_CL/vit/checkpoint
+save_dir=${OUTPUT}/MAE_CL/vit
 
 devices="0,1,2,3"
 #devices="4,5,6,7"
