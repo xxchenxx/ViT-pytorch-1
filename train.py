@@ -134,6 +134,18 @@ def train(args, model, masking, log, writer):
             else:
                 parameter.requires_grad = False
 
+    if args.fix_mlps:
+        for name, module in model.named_modules():
+            from models.modeling_attn_store_prune import AttentionStoreActivationPrune
+            from models.modeling import Attention
+            if "head" in name or isinstance(module, AttentionStoreActivationPrune) or isinstance(module, Attention):
+                print("fixmlps, not freeze {}".format(name))
+                for parameter in module.parameters():
+                    parameter.requires_grad = True
+            else:
+                for parameter in module.parameters():
+                    parameter.requires_grad = False
+
     while True:
         model.train()
         end = time.time()
@@ -264,6 +276,12 @@ def main():
 
     # bitfit
     parser.add_argument('--bitfit', action="store_true", help="if employing bitfit")
+
+    # prune backward
+    parser.add_argument('--fix_mlps', action="store_true", help="fix module except head and attn layer")
+    parser.add_argument('--attn_store_prune', action="store_true", help="if employing attn_store_prune")
+    parser.add_argument('--prune_ratio_act_store', type=float, default=0.0, help="the prune ratio of prune_ratio_act_store")
+    parser.add_argument('--prune_ratio_attn_mat_store', type=float, default=0.0, help="the prune ratio of prune_ratio_attn_mat_store")
 
     args = parser.parse_args()
 
