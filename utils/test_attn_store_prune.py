@@ -82,5 +82,5 @@ def testAttnStoreActivationPrune():
 
 
 if __name__ == "__main__":
-    testSoftMax()
-    # testAttnStoreActivationPrune()
+    # testSoftMax()
+    testAttnStoreActivationPrune()

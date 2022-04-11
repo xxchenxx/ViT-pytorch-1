@@ -45,8 +45,12 @@ class SoftmaxActivationPrune(torch.autograd.Function):
             eye = eye.unsqueeze(0)
         A = ctx.sparse_out
 
-        grad_Softmax = (A * (1 - A)).unsqueeze(-1) * eye - (A.unsqueeze(-1) * A.unsqueeze(-2)) * (1 - eye)
-        grad_out = (grad_in.unsqueeze(-2) @ grad_Softmax).squeeze(-2)
+        # grad_Softmax = (A * (1 - A)).unsqueeze(-1) * eye - (A.unsqueeze(-1) * A.unsqueeze(-2)) * (1 - eye)
+        # grad_out = (grad_in.unsqueeze(-2) @ grad_Softmax).squeeze(-2)
+
+        # merge togather
+        # set_trace()
+        grad_out = grad_in * A - ((grad_in.unsqueeze(-2) @ A.unsqueeze(-1)) @ A.unsqueeze(-2)).squeeze(-2)
 
         return grad_out, None
 
