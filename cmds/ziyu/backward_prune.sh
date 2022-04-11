@@ -51,7 +51,7 @@ devices="0,1,2,3"
 #devices="12,13,14,15"
 port=4573
 #n_gpu=4
-n_gpu=2
+n_gpu=1
 
 pruneStoreAttn=0.5
 pruneStoreAct=0.0
@@ -62,7 +62,7 @@ CUDA_VISIBLE_DEVICES=${devices} python3 -m torch.distributed.launch --nproc_per_
 train.py --name cifar100-lr${lr}-pruneStoreAttn${pruneStoreAttn}Act${pruneStoreAct} --learning_rate ${lr} --num_workers 2 --output_dir ${save_dir} \
 --dataset cifar100 --model_type ViT-B_16 --pretrained_dir ${save_dir}/pretrain/ViT-B_16.npz \
 --attn_store_prune --prune_ratio_attn_mat_store ${pruneStoreAttn} --prune_ratio_act_store ${pruneStoreAct} \
---train_batch_size 32 --eval_batch_size 32
+--train_batch_size 4 --eval_batch_size 4 --eval_every 500
 
 
 ##############################

@@ -32,18 +32,19 @@ class SoftmaxActivationPrune(torch.autograd.Function):
         sparse_out = mask * dense_out
         # print("attn prune ratio: {}".format(1 - mask.float().mean()))
 
-        ctx.sparse_out = sparse_out
+        ctx.save_for_backward(sparse_out)
         # save sparse activation, but forward with dense
         return dense_out, sparse_out
 
     @staticmethod
     def backward(ctx, grad_in, *args):
-        shape_A = ctx.sparse_out.shape
+        sparse_out, = ctx.saved_tensors
+        shape_A = sparse_out.shape
         unsqueeze_cnt = len(shape_A) - 1
-        eye = torch.eye(shape_A[-1]).to(ctx.sparse_out.device)
+        eye = torch.eye(shape_A[-1]).to(sparse_out.device)
         for _ in range(unsqueeze_cnt):
             eye = eye.unsqueeze(0)
-        A = ctx.sparse_out
+        A = sparse_out
 
         # grad_Softmax = (A * (1 - A)).unsqueeze(-1) * eye - (A.unsqueeze(-1) * A.unsqueeze(-2)) * (1 - eye)
         # grad_out = (grad_in.unsqueeze(-2) @ grad_Softmax).squeeze(-2)
