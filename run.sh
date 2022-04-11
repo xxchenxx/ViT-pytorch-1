@@ -9,7 +9,7 @@ echo "OUTPUT_PATH is ${OUTPUT_PATH}"
 #echo "ls OUTPUT"
 #ls ${OUTPUT}
 
-
+pip install ml-collections
 ############# cmds #############
 # fix mlps
 #save_dir="/mnt/models/Ziyu_model/M2M_ViT"
