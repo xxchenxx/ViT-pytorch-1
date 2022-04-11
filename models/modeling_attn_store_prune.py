@@ -40,7 +40,7 @@ class SoftmaxActivationPrune(torch.autograd.Function):
     def backward(ctx, grad_in, *args):
         shape_A = ctx.sparse_out.shape
         unsqueeze_cnt = len(shape_A) - 1
-        eye = torch.eye(shape_A[-1])
+        eye = torch.eye(shape_A[-1]).to(ctx.sparse_out.device)
         for _ in range(unsqueeze_cnt):
             eye = eye.unsqueeze(0)
         A = ctx.sparse_out
