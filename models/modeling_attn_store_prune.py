@@ -34,7 +34,7 @@ class SoftmaxActivationPrune(torch.autograd.Function):
 
         ctx.save_for_backward(sparse_out)
         # save sparse activation, but forward with dense
-        return dense_out, sparse_out
+        return dense_out, mask
 
     @staticmethod
     def backward(ctx, grad_in, *args):
@@ -56,6 +56,81 @@ class SoftmaxActivationPrune(torch.autograd.Function):
         return grad_out, None
 
 
+class LinearFunctionActivationPrune(torch.autograd.Function):
+
+    # Note that both forward and backward are @staticmethods
+    @staticmethod
+    # bias is an optional argument
+    def forward(ctx, input, weight, bias=None, input_prune=None):
+        ctx.save_for_backward(input_prune, weight, bias)
+        output = torch.matmul(input, weight.t())
+        if bias is not None:
+            output += bias.unsqueeze(0).expand_as(output)
+        return output
+
+    # This function has only a single output, so it gets only one gradient
+    @staticmethod
+    def backward(ctx, grad_output):
+        # This is a pattern that is very convenient - at the top of backward
+        # unpack saved_tensors and initialize all gradients w.r.t. inputs to
+        # None. Thanks to the fact that additional trailing Nones are
+        # ignored, the return statement is simple even when the function has
+        # optional inputs.
+        input_prune, weight, bias = ctx.saved_tensors
+        grad_input = grad_weight = grad_bias = None
+
+        # These needs_input_grad checks are optional and there only to
+        # improve efficiency. If you want to make your code simpler, you can
+        # skip them. Returning gradients for inputs that don't require it is
+        # not an error.
+        if ctx.needs_input_grad[0]:
+            grad_input = torch.matmul(grad_output, weight)
+        if ctx.needs_input_grad[1]:
+            grad_weight = torch.matmul(grad_output.transpose(-2, -1), input_prune)
+        if bias is not None and ctx.needs_input_grad[2]:
+            grad_bias = grad_output.sum(0)
+
+        return grad_input, grad_weight, grad_bias, None
+
+
+class MatMulActivationPrune(torch.autograd.Function):
+
+    # Note that both forward and backward are @staticmethods
+    @staticmethod
+    # bias is an optional argument
+    def forward(ctx, A, B, A_prune=None, B_prune=None):
+        ctx.save_for_backward(A_prune, B_prune)
+        output = torch.matmul(A, B)
+        return output
+
+    # This function has only a single output, so it gets only one gradient
+    @staticmethod
+    def backward(ctx, grad_output):
+        # This is a pattern that is very convenient - at the top of backward
+        # unpack saved_tensors and initialize all gradients w.r.t. inputs to
+        # None. Thanks to the fact that additional trailing Nones are
+        # ignored, the return statement is simple even when the function has
+        # optional inputs.
+        A_prune, B_prune = ctx.saved_tensors
+        grad_A = grad_B = None
+
+        # These needs_input_grad checks are optional and there only to
+        # improve efficiency. If you want to make your code simpler, you can
+        # skip them. Returning gradients for inputs that don't require it is
+        # not an error.
+        if ctx.needs_input_grad[0]:
+            grad_A = torch.matmul(grad_output, B_prune.transpose(-2, -1))
+        if ctx.needs_input_grad[1]:
+            grad_B = torch.matmul(A_prune.transpose(-2, -1), grad_output)
+
+        return grad_A, grad_B, None, None
+
+
+class LinearActivationPrune(Linear):
+    def forward(self, input, input_prune):
+        return LinearFunctionActivationPrune.apply(input, self.weight, self.bias, input_prune)
+
+
 class AttentionStoreActivationPrune(nn.Module):
     def __init__(self, config, vis, prune_ratio_attn_mat_store=0, prune_ratio_act_store=0):
         super(AttentionStoreActivationPrune, self).__init__()
@@ -68,11 +143,11 @@ class AttentionStoreActivationPrune(nn.Module):
         self.attention_head_size = int(config.hidden_size / self.num_attention_heads)
         self.all_head_size = self.num_attention_heads * self.attention_head_size
 
-        self.query = Linear(config.hidden_size, self.all_head_size)
-        self.key = Linear(config.hidden_size, self.all_head_size)
-        self.value = Linear(config.hidden_size, self.all_head_size)
+        self.query = LinearActivationPrune(config.hidden_size, self.all_head_size)
+        self.key = LinearActivationPrune(config.hidden_size, self.all_head_size)
+        self.value = LinearActivationPrune(config.hidden_size, self.all_head_size)
 
-        self.out = Linear(config.hidden_size, config.hidden_size)
+        self.out = LinearActivationPrune(config.hidden_size, config.hidden_size)
         self.attn_dropout = Dropout(config.transformer["attention_dropout_rate"])
         self.proj_dropout = Dropout(config.transformer["attention_dropout_rate"])
 
@@ -89,15 +164,9 @@ class AttentionStoreActivationPrune(nn.Module):
         hidden_states_prune = mask.detach() * hidden_states
 
         # dense activate forward
-        with torch.no_grad():
-            mixed_query_layer = self.query(hidden_states).detach()
-            mixed_key_layer = self.key(hidden_states).detach()
-            mixed_value_layer = self.value(hidden_states).detach()
-
-        # pruned activate backward
-        mixed_query_layer += self.query(hidden_states_prune) - self.query(hidden_states_prune).detach()
-        mixed_key_layer += self.key(hidden_states_prune) - self.key(hidden_states_prune).detach()
-        mixed_value_layer += self.value(hidden_states_prune) - self.value(hidden_states_prune).detach()
+        mixed_query_layer = self.query(hidden_states, hidden_states_prune)
+        mixed_key_layer = self.key(hidden_states, hidden_states_prune)
+        mixed_value_layer = self.value(hidden_states, hidden_states_prune)
 
         query_layer = self.transpose_for_scores(mixed_query_layer)
         key_layer = self.transpose_for_scores(mixed_key_layer)
@@ -112,18 +181,22 @@ class AttentionStoreActivationPrune(nn.Module):
         query_layer_prune = mask_query.detach() * query_layer
         key_layer_prune = mask_key.detach() * key_layer
 
-        # dense activate forward
-        with torch.no_grad():
-            attention_scores = torch.matmul(query_layer, key_layer.transpose(-1, -2)).detach()
+        # # dense activate forward
+        # with torch.no_grad():
+        #     attention_scores = torch.matmul(query_layer, key_layer.transpose(-1, -2)).detach()
+        #
+        # # pruned activate backward
+        # attention_scores += torch.matmul(query_layer_prune, key_layer_prune.transpose(-1, -2)) - \
+        #                     torch.matmul(query_layer_prune, key_layer_prune.transpose(-1, -2)).detach()
 
-        # pruned activate backward
-        attention_scores += torch.matmul(query_layer_prune, key_layer_prune.transpose(-1, -2)) - \
-                            torch.matmul(query_layer_prune, key_layer_prune.transpose(-1, -2)).detach()
+        attention_scores = MatMulActivationPrune.apply(query_layer, key_layer.transpose(-1, -2),
+                                                       query_layer_prune, key_layer_prune.transpose(-1, -2))
 
         attention_scores = attention_scores / math.sqrt(self.attention_head_size)
 
         # dense activation forward and prune activation backward
-        attention_probs, attention_probs_prune = SoftmaxActivationPrune.apply(attention_scores, self.prune_ratio_attn_mat_store)
+        attention_probs, mask_attention_probs = SoftmaxActivationPrune.apply(attention_scores, self.prune_ratio_attn_mat_store)
+        attention_probs_prune = attention_probs * mask_attention_probs
 
         # debug use
         # attention_probs = Softmax(dim=-1)(attention_scores)
@@ -137,13 +210,16 @@ class AttentionStoreActivationPrune(nn.Module):
         mask = activation_prune(value_layer, self.prune_ratio_act_store)
         value_layer_prune = mask.detach() * value_layer
 
-        # dense activate forward
-        with torch.no_grad():
-            context_layer = torch.matmul(attention_probs, value_layer).detach()
+        # # dense activate forward
+        # with torch.no_grad():
+        #     context_layer = torch.matmul(attention_probs, value_layer).detach()
+        #
+        # # pruned activate backward
+        # context_layer += torch.matmul(attention_probs_prune, value_layer_prune) - \
+        #                  torch.matmul(attention_probs_prune, value_layer_prune).detach()
 
-        # pruned activate backward
-        context_layer += torch.matmul(attention_probs_prune, value_layer_prune) - \
-                         torch.matmul(attention_probs_prune, value_layer_prune).detach()
+        context_layer = MatMulActivationPrune.apply(attention_probs, value_layer,
+                                                    attention_probs_prune, value_layer_prune)
 
         context_layer = context_layer.permute(0, 2, 1, 3).contiguous()
         new_context_layer_shape = context_layer.size()[:-2] + (self.all_head_size,)
@@ -152,13 +228,7 @@ class AttentionStoreActivationPrune(nn.Module):
         # magnitude based prune activation
         mask = activation_prune(context_layer, self.prune_ratio_act_store)
         context_layer_prune = mask.detach() * context_layer
-
-        # dense activate forward
-        with torch.no_grad():
-            attention_output = self.out(context_layer).detach()
-
-        # pruned activate backward
-        attention_output += self.out(context_layer_prune) - self.out(context_layer_prune).detach()
+        attention_output = self.out(context_layer, context_layer_prune)
 
         attention_output = self.proj_dropout(attention_output)
         return attention_output, weights
