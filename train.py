@@ -135,16 +135,12 @@ def train(args, model, masking, log, writer):
                 parameter.requires_grad = False
 
     if args.fix_mlps:
-        for name, module in model.named_modules():
-            from models.modeling_attn_store_prune import AttentionStoreActivationPrune
-            from models.modeling import Attention
-            if "head" in name or isinstance(module, AttentionStoreActivationPrune) or isinstance(module, Attention):
+        for name, parameter in model.named_parameters():
+            if "head" in name or ".attn" in name:
                 print("fixmlps, not freeze {}".format(name))
-                for parameter in module.parameters():
-                    parameter.requires_grad = True
+                parameter.requires_grad = True
             else:
-                for parameter in module.parameters():
-                    parameter.requires_grad = False
+                parameter.requires_grad = False
 
     while True:
         model.train()
