@@ -23,7 +23,7 @@ n_gpu=8
 pruneStoreAttn=0.9
 pruneStoreAct=0.0
 
-lr=3e-2
+lr=1e-1
 
 python3 -m torch.distributed.launch --nproc_per_node=${n_gpu} --master_port ${port}  \
 train.py --name cifar100-lr${lr}-pruneStoreAttn${pruneStoreAttn}Act${pruneStoreAct} --learning_rate ${lr} --num_workers 2 --output_dir ${save_dir} \
