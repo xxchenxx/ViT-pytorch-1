@@ -68,16 +68,30 @@ def set_seed(args):
         torch.cuda.manual_seed_all(args.seed + args.local_rank)
 
 
+def get_second_path(path, insert_name="_logs4.17"):
+    dir = ""
+    root=path
+    while dir == "":
+        root, dir = os.path.split(root)
+    return os.path.join(root, insert_name, dir)
+
+
 class logger(object):
     def __init__(self, path, log_name="log.txt", local_rank=0):
         self.path = path
+        self.second_path = get_second_path(path)
         self.local_rank = local_rank
         self.log_name = log_name
+
+        if local_rank == 0:
+            os.system("mkdir -p {}".format(self.second_path))
 
     def info(self, msg):
         if self.local_rank in [0, -1]:
             print(msg)
             with open(os.path.join(self.path, self.log_name), 'a') as f:
+                f.write(msg + "\n")
+            with open(os.path.join(self.second_path, self.log_name), 'a') as f:
                 f.write(msg + "\n")
 
 

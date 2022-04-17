@@ -25,19 +25,24 @@ port=4573
 n_gpu=8
 
 lr=1e-2
+port=4573
 
 python3 -m torch.distributed.launch --nproc_per_node=${n_gpu} --master_port ${port}  \
-train.py --name cifar100-lr${lr}-bitfit --learning_rate ${lr} --num_workers 2 --output_dir ${save_dir} \
---dataset cifar100 --model_type ViT-B_16 --pretrained_dir ${save_dir}/pretrain/ViT-B_16.npz --bitfit
+train.py --name cifar100-lr${lr}-fixmlp --learning_rate ${lr} --num_workers 2 --output_dir ${save_dir} \
+--dataset cifar100 --model_type ViT-B_16 --pretrained_dir ${save_dir}/pretrain/ViT-B_16.npz --fixmlps &
 
 lr=3e-2
+port=4576
 
 python3 -m torch.distributed.launch --nproc_per_node=${n_gpu} --master_port ${port}  \
-train.py --name cifar100-lr${lr}-bitfit --learning_rate ${lr} --num_workers 2 --output_dir ${save_dir} \
---dataset cifar100 --model_type ViT-B_16 --pretrained_dir ${save_dir}/pretrain/ViT-B_16.npz --bitfit
+train.py --name cifar100-lr${lr}-fixmlp --learning_rate ${lr} --num_workers 2 --output_dir ${save_dir} \
+--dataset cifar100 --model_type ViT-B_16 --pretrained_dir ${save_dir}/pretrain/ViT-B_16.npz --fixmlps &
 
 lr=3e-3
+port=4579
 
 python3 -m torch.distributed.launch --nproc_per_node=${n_gpu} --master_port ${port}  \
-train.py --name cifar100-lr${lr}-bitfit --learning_rate ${lr} --num_workers 2 --output_dir ${save_dir} \
---dataset cifar100 --model_type ViT-B_16 --pretrained_dir ${save_dir}/pretrain/ViT-B_16.npz --bitfit
+train.py --name cifar100-lr${lr}-fixmlp --learning_rate ${lr} --num_workers 2 --output_dir ${save_dir} \
+--dataset cifar100 --model_type ViT-B_16 --pretrained_dir ${save_dir}/pretrain/ViT-B_16.npz --fixmlps
+
+wait
