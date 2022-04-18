@@ -16,18 +16,17 @@ pip install ml-collections
 #save_dir="."
 save_dir=${OUTPUT}/MAE_CL/vit
 
-#devices="0,1,2,3"
-#devices="4,5,6,7"
-#devices="8,9,10,11"
-#devices="12,13,14,15"
-port=4573
+port=4581
 #n_gpu=4
 n_gpu=8
 
+pruneStoreAttn=0.95
+pruneStoreAct=0.0
+
 lr=1e-2
-port=4573
 
 python3 -m torch.distributed.launch --nproc_per_node=${n_gpu} --master_port ${port}  \
-train.py --name cifar100-lr${lr}-fixmlp --learning_rate ${lr} --num_workers 2 --output_dir ${save_dir} \
---dataset cifar100 --model_type ViT-B_16 --pretrained_dir ${save_dir}/pretrain/ViT-B_16.npz --fix_mlps
+train.py --name cifar100-lr${lr}-pruneStoreAttn${pruneStoreAttn}Act${pruneStoreAct} --learning_rate ${lr} --num_workers 2 --output_dir ${save_dir} \
+--dataset cifar100 --model_type ViT-B_16 --pretrained_dir ${save_dir}/pretrain/ViT-B_16.npz \
+--attn_store_prune --prune_ratio_attn_mat_store ${pruneStoreAttn} --prune_ratio_act_store ${pruneStoreAct}
 
