@@ -15,8 +15,8 @@ from pdb import set_trace
 import sys
 sys.path.append(".")
 
-from models.modeling_attn_store_prune import SoftmaxActivationPrune, AttentionStoreActivationPrune
-from models.modeling import Attention
+from models.modeling_attn_store_prune import SoftmaxActivationPrune, AttentionStoreActivationPrune, MlpActivationPrune
+from models.modeling import Attention, Mlp
 
 
 def testSoftMax():
@@ -50,6 +50,9 @@ class Config(object):
         self.transformer["attention_dropout_rate"] = 0
         self.transformer["num_heads"] = 4
 
+        self.transformer["mlp_dim"] = 64
+        self.transformer["dropout_rate"] = 0
+
 
 def testAttnStoreActivationPrune():
     config = Config()
@@ -81,6 +84,43 @@ def testAttnStoreActivationPrune():
     print("grad dist is {}".format(torch.norm(input_grad_ori - input_grad_our)))
 
 
+def testMlpStoreActivationPrune():
+    config = Config()
+
+    mlp_origin = Mlp(config)
+    mlp_our = MlpActivationPrune(config, prune_ratio_act_store=0)
+    mlp_our.load_state_dict(mlp_origin.state_dict())
+
+    input = torch.rand(2, 10, 32)
+    input.requires_grad = True
+
+    mlp_origin_out = mlp_origin(input)
+    mlp_origin_out[0].sum().backward()
+    input_grad_ori = input.grad
+    fc1_grad_origin = mlp_origin.fc1.weight.grad
+    fc2_grad_origin = mlp_origin.fc2.weight.grad
+
+    # our softmax
+    input.grad = torch.zeros_like(input.grad)
+    input.requires_grad = True
+
+    # when prune ratio is 0, the two should be equal
+    mlp_our_out = mlp_our(input)
+    mlp_our_out[0].sum().backward()
+    fc1_grad_our = mlp_our.fc1.weight.grad
+    fc2_grad_our = mlp_our.fc2.weight.grad
+
+    input_grad_our = input.grad
+
+    print("############ prune ratio of 0 #############")
+    print("activation dist is {}".format(torch.norm(mlp_our_out[0] - mlp_origin_out[0])))
+    # it would be good for slightly different, custom softmax layer often introduce some difference
+    print("input grad dist is {}".format(torch.norm(input_grad_ori - input_grad_our)))
+    print("fc1 grad dist is {}".format(torch.norm(fc1_grad_origin - fc1_grad_our)))
+    print("fc2 grad dist is {}".format(torch.norm(fc2_grad_origin - fc2_grad_our)))
+
+
 if __name__ == "__main__":
     # testSoftMax()
-    testAttnStoreActivationPrune()
+    # testAttnStoreActivationPrune()
+    testMlpStoreActivationPrune()

@@ -126,9 +126,51 @@ class MatMulActivationPrune(torch.autograd.Function):
         return grad_A, grad_B, None, None
 
 
+def swish(x):
+    return x * torch.sigmoid(x)
+
+
+ACT2FN = {"gelu": torch.nn.functional.gelu, "relu": torch.nn.functional.relu, "swish": swish}
+
+
 class LinearActivationPrune(Linear):
     def forward(self, input, input_prune):
         return LinearFunctionActivationPrune.apply(input, self.weight, self.bias, input_prune)
+
+
+class MlpActivationPrune(nn.Module):
+    def __init__(self, config, prune_ratio_act_store):
+        super(MlpActivationPrune, self).__init__()
+
+        self.prune_ratio_act_store = prune_ratio_act_store
+
+        self.fc1 = LinearActivationPrune(config.hidden_size, config.transformer["mlp_dim"])
+        self.fc2 = LinearActivationPrune(config.transformer["mlp_dim"], config.hidden_size)
+        self.act_fn = ACT2FN["gelu"]
+        self.dropout = Dropout(config.transformer["dropout_rate"])
+
+        self._init_weights()
+
+    def _init_weights(self):
+        nn.init.xavier_uniform_(self.fc1.weight)
+        nn.init.xavier_uniform_(self.fc2.weight)
+        nn.init.normal_(self.fc1.bias, std=1e-6)
+        nn.init.normal_(self.fc2.bias, std=1e-6)
+
+    def forward(self, x):
+        mask = activation_prune(x, self.prune_ratio_act_store)
+        x_prune = mask.detach() * x
+        # print("mask.detach() prune ratio is {}".format(mask.detach().float().mean()))
+        x = self.fc1(x, x_prune)
+        x = self.act_fn(x)
+        x = self.dropout(x)
+
+        mask = activation_prune(x, self.prune_ratio_act_store)
+        x_prune = mask.detach() * x
+
+        x = self.fc2(x, x_prune)
+        x = self.dropout(x)
+        return x
 
 
 class AttentionStoreActivationPrune(nn.Module):

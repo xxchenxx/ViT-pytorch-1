@@ -54,7 +54,7 @@ port=4581
 n_gpu=4
 
 pruneStoreAttn=0.97
-pruneStoreAct=0.0
+pruneStoreAct=0.5
 
 lr=1e-3
 

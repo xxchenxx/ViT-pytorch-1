@@ -20,7 +20,7 @@ from scipy import ndimage
 import models.configs as configs
 
 from .modeling_resnet import ResNetV2
-from .modeling_attn_store_prune import AttentionStoreActivationPrune
+from .modeling_attn_store_prune import AttentionStoreActivationPrune, MlpActivationPrune
 
 
 ATTENTION_Q = "MultiHeadDotProductAttention_1/query"
@@ -198,7 +198,11 @@ class Block(nn.Module):
         self.hidden_size = config.hidden_size
         self.attention_norm = LayerNorm(config.hidden_size, eps=1e-6)
         self.ffn_norm = LayerNorm(config.hidden_size, eps=1e-6)
-        self.ffn = Mlp(config)
+
+        if attn_store_prune and prune_ratio_act_store > 1e-6:
+            self.ffn = MlpActivationPrune(config, prune_ratio_act_store)
+        else:
+            self.ffn = Mlp(config)
 
         if attn_store_prune:
             assert not prune_mode
