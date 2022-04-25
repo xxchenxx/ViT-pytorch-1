@@ -8,6 +8,7 @@ import math
 import torch
 import torch.nn as nn
 import numpy as np
+from .sparse_matrix import SparseTensor
 
 from torch.nn import CrossEntropyLoss, Dropout, Softmax, Linear, Conv2d, LayerNorm
 
@@ -32,13 +33,18 @@ class SoftmaxActivationPrune(torch.autograd.Function):
         sparse_out = mask * dense_out
         # print("attn prune ratio: {}".format(1 - mask.float().mean()))
 
-        ctx.save_for_backward(sparse_out)
+        ctx.sparse_out = SparseTensor(sparse_out, mask)
+        # ctx.save_for_backward(sparse_out)
         # save sparse activation, but forward with dense
         return dense_out, mask
 
     @staticmethod
     def backward(ctx, grad_in, *args):
-        sparse_out, = ctx.saved_tensors
+        # sparse_out, = ctx.saved_tensors
+        sparse_out = ctx.sparse_out
+        sparse_out = sparse_out.to_dense()
+        del ctx.sparse_out
+
         shape_A = sparse_out.shape
         unsqueeze_cnt = len(shape_A) - 1
         eye = torch.eye(shape_A[-1]).to(sparse_out.device)
@@ -61,8 +67,11 @@ class LinearFunctionActivationPrune(torch.autograd.Function):
     # Note that both forward and backward are @staticmethods
     @staticmethod
     # bias is an optional argument
-    def forward(ctx, input, weight, bias=None, input_prune=None):
-        ctx.save_for_backward(input_prune, weight, bias)
+    def forward(ctx, input, weight, bias=None, input_prune=None, mask_prune=None):
+        # ctx.save_for_backward(input_prune, weight, bias)
+        ctx.save_for_backward(weight, bias)
+        ctx.input_prune = SparseTensor(input_prune, mask_prune)
+
         output = torch.matmul(input, weight.t())
         if bias is not None:
             output += bias.unsqueeze(0).expand_as(output)
@@ -76,7 +85,11 @@ class LinearFunctionActivationPrune(torch.autograd.Function):
         # None. Thanks to the fact that additional trailing Nones are
         # ignored, the return statement is simple even when the function has
         # optional inputs.
-        input_prune, weight, bias = ctx.saved_tensors
+        # input_prune, weight, bias = ctx.saved_tensors
+        weight, bias = ctx.saved_tensors
+        input_prune = ctx.input_prune.to_dense()
+        del ctx.input_prune
+
         grad_input = grad_weight = grad_bias = None
 
         # These needs_input_grad checks are optional and there only to
@@ -91,7 +104,7 @@ class LinearFunctionActivationPrune(torch.autograd.Function):
         if bias is not None and ctx.needs_input_grad[2]:
             grad_bias = grad_output.sum(0)
 
-        return grad_input, grad_weight, grad_bias, None
+        return grad_input, grad_weight, grad_bias, None, None
 
 
 class MatMulActivationPrune(torch.autograd.Function):
@@ -99,8 +112,9 @@ class MatMulActivationPrune(torch.autograd.Function):
     # Note that both forward and backward are @staticmethods
     @staticmethod
     # bias is an optional argument
-    def forward(ctx, A, B, A_prune=None, B_prune=None):
-        ctx.save_for_backward(A_prune, B_prune)
+    def forward(ctx, A, B, A_prune=None, A_prune_mask=None, B_prune=None, B_prune_mask=None):
+        ctx.A_prune = SparseTensor(A_prune, A_prune_mask)
+        ctx.B_prune = SparseTensor(B_prune, B_prune_mask)
         output = torch.matmul(A, B)
         return output
 
@@ -112,7 +126,10 @@ class MatMulActivationPrune(torch.autograd.Function):
         # None. Thanks to the fact that additional trailing Nones are
         # ignored, the return statement is simple even when the function has
         # optional inputs.
-        A_prune, B_prune = ctx.saved_tensors
+        A_prune = ctx.A_prune.to_dense()
+        del ctx.A_prune
+        B_prune = ctx.B_prune.to_dense()
+        del ctx.B_prune
         grad_A = grad_B = None
 
         # These needs_input_grad checks are optional and there only to
@@ -124,7 +141,7 @@ class MatMulActivationPrune(torch.autograd.Function):
         if ctx.needs_input_grad[1]:
             grad_B = torch.matmul(A_prune.transpose(-2, -1), grad_output)
 
-        return grad_A, grad_B, None, None
+        return grad_A, grad_B, None, None, None, None
 
 
 def swish(x):
@@ -135,8 +152,8 @@ ACT2FN = {"gelu": torch.nn.functional.gelu, "relu": torch.nn.functional.relu, "s
 
 
 class LinearActivationPrune(Linear):
-    def forward(self, input, input_prune):
-        return LinearFunctionActivationPrune.apply(input, self.weight, self.bias, input_prune)
+    def forward(self, input, input_prune, mask_prune):
+        return LinearFunctionActivationPrune.apply(input, self.weight, self.bias, input_prune, mask_prune)
 
 
 class MlpActivationPrune(nn.Module):
@@ -162,14 +179,14 @@ class MlpActivationPrune(nn.Module):
         mask = activation_prune(x, self.prune_ratio_act_store)
         x_prune = mask.detach() * x
         # print("mask.detach() prune ratio is {}".format(mask.detach().float().mean()))
-        x = self.fc1(x, x_prune)
+        x = self.fc1(x, x_prune, mask.detach())
         x = self.act_fn(x)
         x = self.dropout(x)
 
         mask = activation_prune(x, self.prune_ratio_act_store)
         x_prune = mask.detach() * x
 
-        x = self.fc2(x, x_prune)
+        x = self.fc2(x, x_prune, mask.detach())
         x = self.dropout(x)
         return x
 
@@ -207,9 +224,9 @@ class AttentionStoreActivationPrune(nn.Module):
         hidden_states_prune = mask.detach() * hidden_states
 
         # dense activate forward
-        mixed_query_layer = self.query(hidden_states, hidden_states_prune)
-        mixed_key_layer = self.key(hidden_states, hidden_states_prune)
-        mixed_value_layer = self.value(hidden_states, hidden_states_prune)
+        mixed_query_layer = self.query(hidden_states, hidden_states_prune, mask.detach())
+        mixed_key_layer = self.key(hidden_states, hidden_states_prune, mask.detach())
+        mixed_value_layer = self.value(hidden_states, hidden_states_prune, mask.detach())
 
         query_layer = self.transpose_for_scores(mixed_query_layer)
         key_layer = self.transpose_for_scores(mixed_key_layer)
@@ -233,7 +250,8 @@ class AttentionStoreActivationPrune(nn.Module):
         #                     torch.matmul(query_layer_prune, key_layer_prune.transpose(-1, -2)).detach()
 
         attention_scores = MatMulActivationPrune.apply(query_layer, key_layer.transpose(-1, -2),
-                                                       query_layer_prune, key_layer_prune.transpose(-1, -2))
+                                                       query_layer_prune, mask_query.detach(),
+                                                       key_layer_prune.transpose(-1, -2), mask_key.detach().transpose(-1, -2))
 
         attention_scores = attention_scores / math.sqrt(self.attention_head_size)
 
@@ -262,7 +280,8 @@ class AttentionStoreActivationPrune(nn.Module):
         #                  torch.matmul(attention_probs_prune, value_layer_prune).detach()
 
         context_layer = MatMulActivationPrune.apply(attention_probs, value_layer,
-                                                    attention_probs_prune, value_layer_prune)
+                                                    attention_probs_prune, mask_attention_probs,
+                                                    value_layer_prune, mask.detach())
 
         context_layer = context_layer.permute(0, 2, 1, 3).contiguous()
         new_context_layer_shape = context_layer.size()[:-2] + (self.all_head_size,)
@@ -271,7 +290,7 @@ class AttentionStoreActivationPrune(nn.Module):
         # magnitude based prune activation
         mask = activation_prune(context_layer, self.prune_ratio_act_store)
         context_layer_prune = mask.detach() * context_layer
-        attention_output = self.out(context_layer, context_layer_prune)
+        attention_output = self.out(context_layer, context_layer_prune, mask.detach())
 
         attention_output = self.proj_dropout(attention_output)
         return attention_output, weights

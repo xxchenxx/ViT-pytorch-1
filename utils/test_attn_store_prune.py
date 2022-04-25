@@ -122,5 +122,5 @@ def testMlpStoreActivationPrune():
 
 if __name__ == "__main__":
     # testSoftMax()
-    # testAttnStoreActivationPrune()
-    testMlpStoreActivationPrune()
+    testAttnStoreActivationPrune()
+    # testMlpStoreActivationPrune()
