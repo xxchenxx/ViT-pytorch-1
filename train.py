@@ -24,6 +24,7 @@ from utils.utils import *
 from prune.masking import Masking
 
 import time
+import mesa as ms
 
 
 def valid(args, model, writer, test_loader, global_step, log):
@@ -81,6 +82,7 @@ def valid(args, model, writer, test_loader, global_step, log):
 def train(args, model, masking, log, writer):
     batch_time = AverageMeter()
     data_time = AverageMeter()
+    memory_meter = AverageMeter()
 
     args.train_batch_size = args.train_batch_size // args.gradient_accumulation_steps
 
@@ -164,6 +166,9 @@ def train(args, model, masking, log, writer):
             batch_time.update(time.time() - end)
             end = time.time()
 
+            MB = 1024 * 1024
+            memory_meter.update(torch.cuda.max_memory_allocated() / MB)
+
             if (step + 1) % args.gradient_accumulation_steps == 0:
                 losses.update(loss.item()*args.gradient_accumulation_steps)
                 # if args.fp16:
@@ -176,8 +181,8 @@ def train(args, model, masking, log, writer):
                 global_step += 1
 
                 if global_step % 50 == 0:
-                    log.info("Training ({}/{} Steps)\t(loss={:2.5f})\tData time={:.2f}({:.2f})\tBatch time={:.2f}({:.2f})".format(
-                        global_step, t_total, losses.val, data_time.val, data_time.avg, batch_time.val, batch_time.avg))
+                    log.info("Training ({}/{} Steps)\t(loss={:2.5f})\tData time={:.2f}({:.2f})\tBatch time={:.2f}({:.2f})\tMemory={:.1f}({:.1f})".format(
+                        global_step, t_total, losses.val, data_time.val, data_time.avg, batch_time.val, batch_time.avg, memory_meter.val, memory_meter.avg))
                 if args.local_rank in [-1, 0]:
                     writer.add_scalar("train/loss", scalar_value=losses.val, global_step=global_step)
                     writer.add_scalar("train/lr", scalar_value=scheduler.get_lr()[0], global_step=global_step)
@@ -279,6 +284,9 @@ def main():
     parser.add_argument('--prune_ratio_act_store', type=float, default=0.0, help="the prune ratio of prune_ratio_act_store")
     parser.add_argument('--prune_ratio_attn_mat_store', type=float, default=0.0, help="the prune ratio of prune_ratio_attn_mat_store")
 
+    # mesa
+    parser.add_argument('--mesa', action="store_true", help="employ mesa")
+
     args = parser.parse_args()
 
     # Setup CUDA, GPU & distributed training
@@ -313,6 +321,13 @@ def main():
 
     # Model & Tokenizer Setup
     args, model = setup(args, log)
+
+    if args.mesa:
+        for name, module in model.named_modules():
+            module.name = name
+        ms.policy.deploy_on_init(model, 'model_mesa/policy_tiny-8bit.txt', verbose=print, override_verbose=False)
+        model.to(args.device)
+
     masking = None
     if args.prune:
         masking = Masking(model, death_rate=args.prune_death_rate, density=args.prune_dense_ratio,
