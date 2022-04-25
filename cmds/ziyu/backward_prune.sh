@@ -21,10 +21,10 @@ train.py --name cifar100-lr${lr}-fixmlps --learning_rate ${lr} --num_workers 2 -
 #save_dir="/mnt/models/Ziyu_model/M2M_ViT"
 save_dir="."
 
-devices="0,1,2,3"
+#devices="0,1,2,3"
 #devices="4,5,6,7"
 #devices="8,9,10,11"
-#devices="12,13,14,15"
+devices="12,13,14,15"
 port=4573
 #n_gpu=4
 n_gpu=2
@@ -53,10 +53,10 @@ port=4581
 #n_gpu=4
 n_gpu=4
 
-pruneStoreAttn=0.97
-pruneStoreAct=0.5
+pruneStoreAttn=0.8
+pruneStoreAct=0.8
 
-lr=1e-3
+lr=1e-2
 
 CUDA_VISIBLE_DEVICES=${devices} python3 -m torch.distributed.launch --nproc_per_node=${n_gpu} --master_port ${port}  \
 train.py --name cifar100-lr${lr}-pruneStoreAttn${pruneStoreAttn}Act${pruneStoreAct} --learning_rate ${lr} --num_workers 2 --output_dir ${save_dir} \

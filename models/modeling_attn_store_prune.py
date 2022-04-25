@@ -83,7 +83,7 @@ class LinearFunctionActivationPrune(torch.autograd.Function):
         # improve efficiency. If you want to make your code simpler, you can
         # skip them. Returning gradients for inputs that don't require it is
         # not an error.
-        print("grad_output shape is {}".format(grad_output.shape))
+        # print("grad_output shape is {}".format(grad_output.shape))
         if ctx.needs_input_grad[0]:
             grad_input = torch.matmul(grad_output, weight)
         if ctx.needs_input_grad[1]:
