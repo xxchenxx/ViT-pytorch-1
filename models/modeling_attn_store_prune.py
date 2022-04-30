@@ -8,11 +8,11 @@ import math
 import torch
 import torch.nn as nn
 import numpy as np
-from .sparse_matrix import SparseTensor
+# from models.custom_functions.sparse_matrix import SparseTensor
 
-from torch.nn import CrossEntropyLoss, Dropout, Softmax, Linear, Conv2d, LayerNorm
+from torch.nn import Dropout, Softmax, Linear
 
-from pdb import set_trace
+
 @torch.no_grad()
 def activation_prune(activation, prune_ratio):
     num_small = int(np.clip(activation[0].numel() * prune_ratio, 1, activation[0].numel()))

@@ -21,7 +21,11 @@ import models.configs as configs
 
 from .modeling_resnet import ResNetV2
 from .modeling_attn_store_prune import AttentionStoreActivationPrune, MlpActivationPrune
+from .custom_functions.custom_layer_norm import LayerNormSparse
 
+from .modeling_new_prune import AttentionActPrune, MlpActPrune
+
+from pdb import set_trace
 
 ATTENTION_Q = "MultiHeadDotProductAttention_1/query"
 ATTENTION_K = "MultiHeadDotProductAttention_1/key"
@@ -65,6 +69,7 @@ class Attention(nn.Module):
         self.attn_dropout = Dropout(config.transformer["attention_dropout_rate"])
         self.proj_dropout = Dropout(config.transformer["attention_dropout_rate"])
 
+        self.n_tokens = n_tokens
         if self.prune_mode:
             self.attention_mask = nn.Parameter(torch.ones(1, self.num_attention_heads,
                                                           n_tokens, n_tokens).bool(), requires_grad=False)
@@ -73,6 +78,7 @@ class Attention(nn.Module):
         self.softmax = Softmax(dim=-1)
         self.attention_probs = None
         self.record_attention_probs = False
+
     def transpose_for_scores(self, x):
         new_x_shape = x.size()[:-1] + (self.num_attention_heads, self.attention_head_size)
         x = x.view(*new_x_shape)
@@ -193,22 +199,32 @@ class Embeddings(nn.Module):
 
 class Block(nn.Module):
     def __init__(self, config, vis, prune_mode=False, prune_after_softmax=False, n_tokens=1,
-                 attn_store_prune=False, prune_ratio_attn_mat_store=0, prune_ratio_act_store=0):
+                 attn_store_prune=False, masker=None):
         super(Block, self).__init__()
         self.hidden_size = config.hidden_size
-        self.attention_norm = LayerNorm(config.hidden_size, eps=1e-6)
-        self.ffn_norm = LayerNorm(config.hidden_size, eps=1e-6)
 
-        if attn_store_prune and prune_ratio_act_store > 1e-6:
-            self.ffn = MlpActivationPrune(config, prune_ratio_act_store)
+        if attn_store_prune:
+            self.attention_norm = LayerNormSparse(config.hidden_size, eps=1e-6, masker=masker, quantize=config.quantize)
+            self.ffn_norm = LayerNormSparse(config.hidden_size, eps=1e-6, masker=masker, quantize=config.quantize)
+        else:
+            self.attention_norm = LayerNorm(config.hidden_size, eps=1e-6)
+            self.ffn_norm = LayerNorm(config.hidden_size, eps=1e-6)
+
+        if attn_store_prune:
+            assert masker is not None
+            self.ffn = MlpActPrune(config, masker)
         else:
             self.ffn = Mlp(config)
 
         if attn_store_prune:
             assert not prune_mode
-            self.attn = AttentionStoreActivationPrune(config, vis,
-                                                      prune_ratio_attn_mat_store=prune_ratio_attn_mat_store,
-                                                      prune_ratio_act_store=prune_ratio_act_store)
+            assert masker is not None
+
+            self.attn = AttentionActPrune(config, vis, masker)
+
+            # self.attn = AttentionStoreActivationPrune(config, vis,
+            #                                           prune_ratio_attn_mat_store=prune_ratio_attn_mat_store,
+            #                                           prune_ratio_act_store=prune_ratio_act_store)
         else:
             self.attn = Attention(config, vis, prune_mode, prune_after_softmax, n_tokens)
 
@@ -284,9 +300,10 @@ class Encoder(nn.Module):
 
 
 class Transformer(nn.Module):
-    def __init__(self, config, img_size, vis, prune_mode=False, prune_after_softmax=False, **kwargs):
+    def __init__(self, config, img_size, vis, prune_mode=False, prune_after_softmax=False, quantize=False, **kwargs):
         super(Transformer, self).__init__()
         self.embeddings = Embeddings(config, img_size=img_size)
+        config.quantize = quantize
         self.encoder = Encoder(config, vis, prune_mode, prune_after_softmax=prune_after_softmax,
                                n_tokens=self.embeddings.position_embeddings.shape[1], **kwargs)
 

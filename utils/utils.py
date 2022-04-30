@@ -4,7 +4,7 @@ import numpy as np
 import torch
 from models.modeling import VisionTransformer, CONFIGS
 from model_mesa.modeling_mesa import VisionTransformer as VisionTransformerMesa
-
+from models.custom_functions.masker import Masker
 
 class AverageMeter(object):
     """Computes and stores the average and current value"""
@@ -45,11 +45,11 @@ def setup(args, log):
         log.info("Employ mesa transformer")
         model = VisionTransformerMesa(config, args.img_size, zero_head=True, num_classes=num_classes)
     else:
+        masker = None if not args.attn_store_prune else Masker(prune_ratio=args.back_prune_ratio)
         model = VisionTransformer(config, args.img_size, zero_head=True, num_classes=num_classes,
                                   prune_mode=args.prune, prune_after_softmax=args.prune_after_softmax,
                                   attn_store_prune=args.attn_store_prune,
-                                  prune_ratio_attn_mat_store=args.prune_ratio_attn_mat_store,
-                                  prune_ratio_act_store=args.prune_ratio_act_store)
+                                  masker=masker, quantize=args.quantize)
 
     model.load_from(np.load(args.pretrained_dir))
     model.to(args.device)

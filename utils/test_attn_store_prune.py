@@ -120,7 +120,116 @@ def testMlpStoreActivationPrune():
     print("fc2 grad dist is {}".format(torch.norm(fc2_grad_origin - fc2_grad_our)))
 
 
+class ConfigMemoryTest(object):
+    def __init__(self):
+        self.hidden_size = 384
+
+        self.transformer = dict()
+        self.transformer["attention_dropout_rate"] = 0
+        self.transformer["num_heads"] = 12
+
+        self.transformer["mlp_dim"] = 384
+        self.transformer["dropout_rate"] = 0
+
+def testMemoryMlpStoreActivationPrune():
+    config = ConfigMemoryTest()
+
+    prune_ratio = 0.8
+
+    model = nn.Sequential(*[MlpActivationPrune(config, prune_ratio_act_store=prune_ratio) for _ in range(10)])
+
+    # remove gelu
+    for module in model:
+        module.act_fn = nn.Identity()
+
+    model = model.cuda()
+    input = torch.rand(64, 196, 384).cuda()
+
+
+    mlp_origin_out = model(input)
+    mlp_origin_out[0].sum().backward()
+
+
+    print("############ prune ratio of {} #############".format(prune_ratio))
+    MB = 1024.0 * 1024.0
+    print("max memory is {:.1f} MB".format(torch.cuda.max_memory_allocated() / MB))
+
+
+def testMemoryMlp():
+    config = ConfigMemoryTest()
+
+    model = nn.Sequential(*[Mlp(config) for _ in range(10)])
+
+    # remove gelu
+    for module in model:
+        module.act_fn = nn.Identity()
+
+    model = model.cuda()
+    input = torch.rand(64, 196, 384).cuda()
+    MB = 1024.0 * 1024.0
+    print("input usage is {:.1f} MB".format(input.element_size() * input.nelement() / MB))
+
+    mlp_origin_out = model(input)
+    mlp_origin_out[0].sum().backward()
+
+    print("############ standard mlp #############")
+    print("max memory is {:.1f} MB".format(torch.cuda.max_memory_allocated() / MB))
+
+
+def testMemoryWeightNoGradMlp():
+    config = ConfigMemoryTest()
+
+    model = nn.Sequential(*[Mlp(config) for _ in range(10)])
+    model = model.cuda()
+    input = torch.rand(64, 196, 384).cuda()
+
+    mlp_origin_out = model(input)
+
+    for name, param in model.named_parameters():
+        if "weight" in name:
+            print(name)
+            param.requires_grad = False
+
+    mlp_origin_out[0].sum().backward()
+
+
+    print("############ weight no gradient mlp #############")
+    MB = 1024.0 * 1024.0
+    print("max memory is {:.1f} MB".format(torch.cuda.max_memory_allocated() / MB))
+
+
+def testMemoryMesaMlp():
+    config = ConfigMemoryTest()
+
+    from model_mesa.modeling_mesa import Mlp as MlpMesa
+    import mesa as ms
+    model = nn.Sequential(*[MlpMesa(config) for _ in range(10)])
+
+    # remove gelu
+    for module in model:
+        module.act_fn = nn.Identity()
+
+    for name, module in model.named_modules():
+        module.name = name
+    ms.policy.deploy_on_init(model, 'model_mesa/policy_tiny-8bit.txt', verbose=print, override_verbose=False)
+    model = model.cuda()
+    input = torch.rand(64, 196, 384).cuda()
+
+    mlp_origin_out = model(input)
+
+    mlp_origin_out[0].sum().backward()
+
+
+    print("############ weight no gradient mlp #############")
+    MB = 1024.0 * 1024.0
+    print("max memory is {:.1f} MB".format(torch.cuda.max_memory_allocated() / MB))
+
+
 if __name__ == "__main__":
     # testSoftMax()
-    testAttnStoreActivationPrune()
     # testMlpStoreActivationPrune()
+
+    # testMemoryMlpStoreActivationPrune()
+    # testMemoryMlp()
+    # testMemoryWeightNoGradMlp()
+    testMemoryMesaMlp()

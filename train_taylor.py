@@ -287,7 +287,8 @@ def main():
     masking = None
     if args.prune:
         masking = TaylorMasking(model, death_rate=args.prune_death_rate, density=args.prune_dense_ratio,
-                          death_rate_decay=None, args=args, avg_magni_var_alpha=args.prune_avg_magni_var_alpha, log=log)
+                                death_rate_decay=None, args=args, avg_magni_var_alpha=args.prune_avg_magni_var_alpha,
+                                log=log)
 
     # Training
     train(args, model, masking, log, writer)

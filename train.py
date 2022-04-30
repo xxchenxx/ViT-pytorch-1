@@ -20,6 +20,7 @@ from utils.scheduler import WarmupLinearSchedule, WarmupCosineSchedule
 from utils.data_utils import get_loader
 from utils.dist_util import get_world_size
 from utils.utils import *
+from utils.memory_cost_profiler import profile_memory_cost
 
 from prune.masking import Masking
 
@@ -281,11 +282,14 @@ def main():
     # prune backward
     parser.add_argument('--fix_mlps', action="store_true", help="fix module except head and attn layer")
     parser.add_argument('--attn_store_prune', action="store_true", help="if employing attn_store_prune")
-    parser.add_argument('--prune_ratio_act_store', type=float, default=0.0, help="the prune ratio of prune_ratio_act_store")
-    parser.add_argument('--prune_ratio_attn_mat_store', type=float, default=0.0, help="the prune ratio of prune_ratio_attn_mat_store")
+    parser.add_argument('--back_prune_ratio', type=float, default=0.0, help="the prune ratio of prune_ratio_act_store")
+    parser.add_argument('--quantize', action="store_true", help="while pruning, also do the quantization")
 
     # mesa
     parser.add_argument('--mesa', action="store_true", help="employ mesa")
+
+    # profile
+    parser.add_argument('--memory_cost_profile', action="store_true", help="profile memory cost")
 
     args = parser.parse_args()
 
@@ -322,12 +326,45 @@ def main():
     # Model & Tokenizer Setup
     args, model = setup(args, log)
 
+    if args.memory_cost_profile:
+        if args.bitfit:
+            for name, parameter in model.named_parameters():
+                print(name)
+                if "bias" in name or "head" in name:
+                    parameter.requires_grad = True
+                else:
+                    parameter.requires_grad = False
+
+        if args.fix_mlps:
+            for name, parameter in model.named_parameters():
+                if "head" in name or ".attn" in name:
+                    print("fixmlps, not freeze {}".format(name))
+                    parameter.requires_grad = True
+                else:
+                    parameter.requires_grad = False
+
+        # if args.mesa:
+        activation_bits = 32
+        # else:
+        #     activation_bits = 32
+
+        # memory_cost, {'param_size': param_size, 'act_size': activation_size}
+        memory_cost, memory_cost_dict = profile_memory_cost(model, input_size=(1, 3, 224, 224), require_backward=True,
+                                                            activation_bits=activation_bits, trainable_param_bits=32,
+                                                            frozen_param_bits=8, batch_size=32)
+        MB = 1024 * 1024
+        log.info("memory_cost is {:.1f} MB, param size is {:.1f} MB, act_size each sample is {:.1f} MB".
+                 format(memory_cost / MB, memory_cost_dict["param_size"] / MB, memory_cost_dict["act_size"] / MB))
+
+        return
+
     if args.mesa:
         for name, module in model.named_modules():
             module.name = name
         ms.policy.deploy_on_init(model, 'model_mesa/policy_tiny-8bit.txt', verbose=print, override_verbose=False)
         model.to(args.device)
 
+    print(model)
     masking = None
     if args.prune:
         masking = Masking(model, death_rate=args.prune_death_rate, density=args.prune_dense_ratio,
