@@ -212,7 +212,8 @@ class Block(nn.Module):
 
         if attn_store_prune:
             assert masker is not None
-            self.ffn = MlpActPrune(config, masker)
+            # self.ffn = MlpActPrune(config, masker)
+            self.ffn = MlpActivationPrune(config, masker.prune_ratio)
         else:
             self.ffn = Mlp(config)
 
@@ -220,11 +221,11 @@ class Block(nn.Module):
             assert not prune_mode
             assert masker is not None
 
-            self.attn = AttentionActPrune(config, vis, masker)
+            # self.attn = AttentionActPrune(config, vis, masker)
 
-            # self.attn = AttentionStoreActivationPrune(config, vis,
-            #                                           prune_ratio_attn_mat_store=prune_ratio_attn_mat_store,
-            #                                           prune_ratio_act_store=prune_ratio_act_store)
+            self.attn = AttentionStoreActivationPrune(config, vis,
+                                                      prune_ratio_attn_mat_store=masker.prune_ratio,
+                                                      prune_ratio_act_store=masker.prune_ratio)
         else:
             self.attn = Attention(config, vis, prune_mode, prune_after_softmax, n_tokens)
 

@@ -8,7 +8,7 @@ import math
 import torch
 import torch.nn as nn
 import numpy as np
-# from models.custom_functions.sparse_matrix import SparseTensor
+from .sparse_matrix_old import SparseTensor
 
 from torch.nn import Dropout, Softmax, Linear
 
