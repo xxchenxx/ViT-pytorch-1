@@ -35,8 +35,8 @@ class SoftmaxActivationPrune(torch.autograd.Function):
         # print("attn prune ratio: {}".format(1 - mask.float().mean()))
 
         # ctx.sparse_out = SparseTensor(sparse_out, mask)
-        shape, mask, sparse = sparsify(sparse_out, mask)
-        ctx.save_for_backward(shape, mask, sparse)
+        shape, mask_, sparse = sparsify(sparse_out, mask)
+        ctx.save_for_backward(shape, mask_, sparse)
         # save sparse activation, but forward with dense
         return dense_out, mask
 
