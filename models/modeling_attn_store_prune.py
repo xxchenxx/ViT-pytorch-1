@@ -8,7 +8,8 @@ import math
 import torch
 import torch.nn as nn
 import numpy as np
-from .sparse_matrix_old import SparseTensor
+# from .sparse_matrix_old import SparseTensor
+from .custom_functions.sparse_matrix import sparsify, unsparsify
 
 from torch.nn import Dropout, Softmax, Linear
 
@@ -33,17 +34,20 @@ class SoftmaxActivationPrune(torch.autograd.Function):
         sparse_out = mask * dense_out
         # print("attn prune ratio: {}".format(1 - mask.float().mean()))
 
-        ctx.sparse_out = SparseTensor(sparse_out, mask)
-        # ctx.save_for_backward(sparse_out)
+        # ctx.sparse_out = SparseTensor(sparse_out, mask)
+        shape, mask, sparse = sparsify(sparse_out, mask)
+        ctx.save_for_backward(shape, mask, sparse)
         # save sparse activation, but forward with dense
         return dense_out, mask
 
     @staticmethod
     def backward(ctx, grad_in, *args):
-        # sparse_out, = ctx.saved_tensors
-        sparse_out = ctx.sparse_out
-        sparse_out = sparse_out.to_dense()
-        del ctx.sparse_out
+        shape, mask, sparse = ctx.saved_tensors
+        sparse_out = unsparsify(shape, mask, sparse)
+
+        # sparse_out = ctx.sparse_out
+        # sparse_out = sparse_out.to_dense()
+        # del ctx.sparse_out
 
         shape_A = sparse_out.shape
         unsqueeze_cnt = len(shape_A) - 1
@@ -69,8 +73,11 @@ class LinearFunctionActivationPrune(torch.autograd.Function):
     # bias is an optional argument
     def forward(ctx, input, weight, bias=None, input_prune=None, mask_prune=None):
         # ctx.save_for_backward(input_prune, weight, bias)
-        ctx.save_for_backward(weight, bias)
-        ctx.input_prune = SparseTensor(input_prune, mask_prune)
+        # ctx.save_for_backward(weight, bias)
+        # ctx.input_prune = SparseTensor(input_prune, mask_prune)
+
+        shape, mask, sparse = sparsify(input_prune, mask_prune)
+        ctx.save_for_backward(weight, bias, shape, mask, sparse)
 
         output = torch.matmul(input, weight.t())
         if bias is not None:
@@ -86,9 +93,13 @@ class LinearFunctionActivationPrune(torch.autograd.Function):
         # ignored, the return statement is simple even when the function has
         # optional inputs.
         # input_prune, weight, bias = ctx.saved_tensors
-        weight, bias = ctx.saved_tensors
-        input_prune = ctx.input_prune.to_dense()
-        del ctx.input_prune
+
+        # weight, bias = ctx.saved_tensors
+        # input_prune = ctx.input_prune.to_dense()
+        # del ctx.input_prune
+
+        weight, bias, shape, mask, sparse = ctx.saved_tensors
+        input_prune = unsparsify(shape, mask, sparse)
 
         grad_input = grad_weight = grad_bias = None
 
@@ -113,8 +124,13 @@ class MatMulActivationPrune(torch.autograd.Function):
     @staticmethod
     # bias is an optional argument
     def forward(ctx, A, B, A_prune=None, A_prune_mask=None, B_prune=None, B_prune_mask=None):
-        ctx.A_prune = SparseTensor(A_prune, A_prune_mask)
-        ctx.B_prune = SparseTensor(B_prune, B_prune_mask)
+        # ctx.A_prune = SparseTensor(A_prune, A_prune_mask)
+        # ctx.B_prune = SparseTensor(B_prune, B_prune_mask)
+
+        A_shape, A_mask, A_sparse = sparsify(A_prune, A_prune_mask)
+        B_shape, B_mask, B_sparse = sparsify(B_prune, B_prune_mask)
+        ctx.save_for_backward(A_shape, A_mask, A_sparse, B_shape, B_mask, B_sparse)
+
         output = torch.matmul(A, B)
         return output
 
@@ -126,11 +142,16 @@ class MatMulActivationPrune(torch.autograd.Function):
         # None. Thanks to the fact that additional trailing Nones are
         # ignored, the return statement is simple even when the function has
         # optional inputs.
-        A_prune = ctx.A_prune.to_dense()
-        del ctx.A_prune
-        B_prune = ctx.B_prune.to_dense()
-        del ctx.B_prune
+
+        # A_prune = ctx.A_prune.to_dense()
+        # del ctx.A_prune
+        # B_prune = ctx.B_prune.to_dense()
+        # del ctx.B_prune
         grad_A = grad_B = None
+
+        A_shape, A_mask, A_sparse, B_shape, B_mask, B_sparse = ctx.saved_tensors
+        A_prune = unsparsify(A_shape, A_mask, A_sparse)
+        B_prune = unsparsify(B_shape, B_mask, B_sparse)
 
         # These needs_input_grad checks are optional and there only to
         # improve efficiency. If you want to make your code simpler, you can
