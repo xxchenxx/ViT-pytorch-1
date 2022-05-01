@@ -48,11 +48,20 @@ def setup(args, log):
         masker = None if not args.new_backrazor else Masker(prune_ratio=args.back_prune_ratio)
         if args.new_backrazor:
             assert not args.attn_store_prune
+
+        backrazor_items = ["fc", "matmul", "softmax"]
+
+        if args.backrazor_with_layernorm:
+            backrazor_items.append("layernorm")
+
+        if args.backrazor_with_gelu:
+            backrazor_items.append("gelu")
+
         model = VisionTransformer(config, args.img_size, zero_head=True, num_classes=num_classes,
                                   prune_mode=args.prune, prune_after_softmax=args.prune_after_softmax,
                                   attn_store_prune=args.attn_store_prune,
                                   masker=masker, quantize=args.quantize,
-                                  new_backrazor=args.new_backrazor, new_backrazor_item=["fc", "matmul", "softmax"])
+                                  new_backrazor=args.new_backrazor, new_backrazor_item=backrazor_items)
 
     model.load_from(np.load(args.pretrained_dir))
     model.to(args.device)

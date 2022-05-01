@@ -285,6 +285,8 @@ def main():
     parser.add_argument('--back_prune_ratio', type=float, default=0.0, help="the prune ratio of prune_ratio_act_store")
 
     parser.add_argument('--new_backrazor', action="store_true", help="if employing the new backrazor")
+    parser.add_argument('--backrazor_with_layernorm', action="store_true", help="if employing the layernorm")
+    parser.add_argument('--backrazor_with_gelu', action="store_true", help="if employing gelu")
     parser.add_argument('--quantize', action="store_true", help="while pruning, also do the quantization")
 
     # mesa
