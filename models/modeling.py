@@ -203,12 +203,12 @@ class Block(nn.Module):
         super(Block, self).__init__()
         self.hidden_size = config.hidden_size
 
-        if attn_store_prune:
-            self.attention_norm = LayerNormSparse(config.hidden_size, eps=1e-6, masker=masker, quantize=config.quantize)
-            self.ffn_norm = LayerNormSparse(config.hidden_size, eps=1e-6, masker=masker, quantize=config.quantize)
-        else:
-            self.attention_norm = LayerNorm(config.hidden_size, eps=1e-6)
-            self.ffn_norm = LayerNorm(config.hidden_size, eps=1e-6)
+        # if attn_store_prune:
+        #     self.attention_norm = LayerNormSparse(config.hidden_size, eps=1e-6, masker=masker, quantize=config.quantize)
+        #     self.ffn_norm = LayerNormSparse(config.hidden_size, eps=1e-6, masker=masker, quantize=config.quantize)
+        # else:
+        self.attention_norm = LayerNorm(config.hidden_size, eps=1e-6)
+        self.ffn_norm = LayerNorm(config.hidden_size, eps=1e-6)
 
         if attn_store_prune:
             assert masker is not None
