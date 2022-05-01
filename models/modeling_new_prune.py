@@ -97,7 +97,8 @@ class AttentionActPrune(nn.Module):
 
         if "softmax" in new_backrazor_item:
             print("employ new sparse softmax for Attn block")
-            self.softmax = SoftmaxSparse(dim=-1, quantize=config.quantize, masker=masker)
+            self.softmax_mm2 = SoftmaxMatMulSparse(dim=-1, quantize=config.quantize, masker=masker)
+            self.mm2 = None
         else:
             self.softmax = Softmax(dim=-1)
 
@@ -124,8 +125,11 @@ class AttentionActPrune(nn.Module):
         weights = None
         # context_layer = self.softmax_mm2(attention_scores, value_layer)
 
-        attention_probs = self.softmax(attention_scores)
-        context_layer = self.mm2(attention_probs, value_layer)
+        if self.mm2 is None:
+            context_layer = self.softmax_mm2(attention_scores, value_layer)
+        else:
+            attention_probs = self.softmax(attention_scores)
+            context_layer = self.mm2(attention_probs, value_layer)
 
         context_layer = context_layer.permute(0, 2, 1, 3).contiguous()
         new_context_layer_shape = context_layer.size()[:-2] + (self.all_head_size,)

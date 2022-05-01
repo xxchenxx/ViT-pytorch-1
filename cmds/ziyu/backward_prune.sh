@@ -45,9 +45,9 @@ train.py --name cifar100-lr${lr}-fixmlps-pruneStoreAttn${pruneStoreAttn}Act${pru
 save_dir="/mnt/models/Ziyu_model/M2M_ViT"
 #save_dir="."
 
-devices="0,1,2,3"
+#devices="0,1,2,3"
 #devices="4,5,6,7"
-#devices="8,9,10,11"
+devices="8,9,10,11"
 #devices="12,13,14,15"
 port=4781
 #n_gpu=4
@@ -69,9 +69,9 @@ save_dir="/mnt/models/Ziyu_model/M2M_ViT"
 
 #devices="0,1,2,3"
 #devices="4,5,6,7"
-devices="8,9,10,11"
-#devices="12,13,14,15"
-port=4798
+#devices="8,9,10,11"
+devices="12,13,14,15"
+port=4799
 n_gpu=4
 #n_gpu=1
 
