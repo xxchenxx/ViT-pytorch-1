@@ -40,11 +40,11 @@ class softmax(torch.autograd.Function):
 
         y = unsparsify(shape_y, mask_y, sparse_y)
 
-        # grad_out = grad_in * y - ((grad_in.unsqueeze(-2) @ y.unsqueeze(-1)) @ y.unsqueeze(-2)).squeeze(-2)
-        if y.is_cuda:
-            grad_out = native.softmax_backward_cuda(grad_in, y, ctx.dim, y)
-        else:
-            grad_out = native.softmax_backward_cpu(grad_in, y, ctx.dim, y)
+        grad_out = grad_in * y - ((grad_in.unsqueeze(-2) @ y.unsqueeze(-1)) @ y.unsqueeze(-2)).squeeze(-2)
+        # if y.is_cuda:
+        #     grad_out = native.softmax_backward_cuda(grad_in, y, ctx.dim, y)
+        # else:
+        #     grad_out = native.softmax_backward_cpu(grad_in, y, ctx.dim, y)
 
         return grad_out, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None
 
