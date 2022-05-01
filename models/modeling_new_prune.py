@@ -66,7 +66,10 @@ class AttentionActPrune(nn.Module):
         self.proj_dropout = Dropout(config.transformer["attention_dropout_rate"])
 
         self.mm1 = MatMulSparse(quantize=config.quantize, masker=masker)
-        self.softmax_mm2 = SoftmaxMatMulSparse(quantize=config.quantize, masker=masker, dim=-1)
+        # self.softmax_mm2 = SoftmaxMatMulSparse(quantize=config.quantize, masker=masker, dim=-1)
+        self.mm2 = MatMulSparse(quantize=config.quantize, masker=masker)
+
+        self.softmax = SoftmaxSparse(dim=-1, quantize=config.quantize, masker=masker)
 
     def transpose_for_scores(self, x):
         new_x_shape = x.size()[:-1] + (self.num_attention_heads, self.attention_head_size)
@@ -86,7 +89,11 @@ class AttentionActPrune(nn.Module):
         attention_scores = attention_scores / math.sqrt(self.attention_head_size)
 
         weights = None
-        context_layer = self.softmax_mm2(attention_scores, value_layer)
+        # context_layer = self.softmax_mm2(attention_scores, value_layer)
+
+        attention_probs = self.softmax(attention_scores)
+        context_layer = self.mm2(attention_probs, value_layer)
+
         context_layer = context_layer.permute(0, 2, 1, 3).contiguous()
         new_context_layer_shape = context_layer.size()[:-2] + (self.all_head_size,)
         context_layer = context_layer.view(*new_context_layer_shape)
