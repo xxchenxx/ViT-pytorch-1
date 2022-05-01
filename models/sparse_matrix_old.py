@@ -1,16 +1,19 @@
 import torch
 from pdb import set_trace
 
+from mesa import packbit
 
 class SparseTensor(object):
     def __init__(self, tensor, mask):
         self.shape = tensor.shape
-        self.mask = mask.reshape(-1)
-        self.sparse = tensor.reshape(-1)[self.mask]
+        mask = mask.reshape(-1)
+        self.sparse = tensor.reshape(-1)[mask]
+        self.mask = packbit.packbits_padded(mask)
 
     def to_dense(self, ):
-        self.dense = torch.zeros(self.mask.shape, device=self.sparse.device, dtype=self.sparse.dtype)
-        self.dense[self.mask] = self.sparse
+        mask = packbit.unpackbits_padded(self.mask).to(dtype=torch.bool)
+        self.dense = torch.zeros(mask.shape, device=self.sparse.device, dtype=self.sparse.dtype)
+        self.dense[mask] = self.sparse
         return self.dense.reshape(self.shape)
 
 
