@@ -25,8 +25,8 @@ class MlpActPrune(nn.Module):
 
         self.fc1 = LinearSparse(config.hidden_size, config.transformer["mlp_dim"], quantize=config.quantize, masker=masker)
         self.fc2 = LinearSparse(config.transformer["mlp_dim"], config.hidden_size, quantize=config.quantize, masker=masker)
-        # self.act_fn = GELUSparse(quantize=config.quantize, masker=masker)
-        self.act_fn = nn.GELU()
+        self.act_fn = GELUSparse(quantize=config.quantize, masker=masker)
+        # self.act_fn = nn.GELU()
         self.dropout = Dropout(config.transformer["dropout_rate"])
 
         self._init_weights()
