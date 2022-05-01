@@ -234,10 +234,15 @@ class Block(nn.Module):
         x, weights = self.attn(x)
         x = x + h
 
+        print("attn output {}".format(x.mean(-1).mean(-1)))
+
         h = x
         x = self.ffn_norm(x)
         x = self.ffn(x)
         x = x + h
+
+        print("mlp output {}".format(x.mean(-1).mean(-1)))
+
         return x, weights
 
     def load_from(self, weights, n_block):
@@ -308,7 +313,9 @@ class Transformer(nn.Module):
                                n_tokens=self.embeddings.position_embeddings.shape[1], **kwargs)
 
     def forward(self, input_ids):
+        print("input_ids is {}".format(input_ids.mean(-1).mean(-1)))
         embedding_output = self.embeddings(input_ids)
+        print("self.embeddings output {}".format(embedding_output.mean(-1).mean(-1)))
         encoded, attn_weights = self.encoder(embedding_output)
         return encoded, attn_weights
 

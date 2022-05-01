@@ -80,5 +80,5 @@ def testMlpStoreActivationPrune():
 
 
 if __name__ == "__main__":
-    testMemoryLayernorm()
-    # testMlpStoreActivationPrune()
+    # testMemoryLayernorm()
+    testMlpStoreActivationPrune()
