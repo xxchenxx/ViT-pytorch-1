@@ -283,6 +283,8 @@ def main():
     parser.add_argument('--fix_mlps', action="store_true", help="fix module except head and attn layer")
     parser.add_argument('--attn_store_prune', action="store_true", help="if employing attn_store_prune")
     parser.add_argument('--back_prune_ratio', type=float, default=0.0, help="the prune ratio of prune_ratio_act_store")
+
+    parser.add_argument('--new_backrazor', action="store_true", help="if employing the new backrazor")
     parser.add_argument('--quantize', action="store_true", help="while pruning, also do the quantization")
 
     # mesa

@@ -199,30 +199,35 @@ class Embeddings(nn.Module):
 
 class Block(nn.Module):
     def __init__(self, config, vis, prune_mode=False, prune_after_softmax=False, n_tokens=1,
-                 attn_store_prune=False, masker=None):
+                 attn_store_prune=False, masker=None,
+                 new_backrazor=False, new_backrazor_item=["fc", "matmul", "softmax", "gelu", "layernorm"]):
         super(Block, self).__init__()
         self.hidden_size = config.hidden_size
 
-        # if attn_store_prune:
-        #     self.attention_norm = LayerNormSparse(config.hidden_size, eps=1e-6, masker=masker, quantize=config.quantize)
-        #     self.ffn_norm = LayerNormSparse(config.hidden_size, eps=1e-6, masker=masker, quantize=config.quantize)
-        # else:
-        self.attention_norm = LayerNorm(config.hidden_size, eps=1e-6)
-        self.ffn_norm = LayerNorm(config.hidden_size, eps=1e-6)
+        self.new_backrazor = new_backrazor
+        self.new_backrazor_item = new_backrazor_item
 
-        if attn_store_prune:
+        if new_backrazor and "layernorm" in new_backrazor_item:
+            print("employ new sparse layernorm")
+            self.attention_norm = LayerNormSparse(config.hidden_size, eps=1e-6, masker=masker, quantize=config.quantize)
+            self.ffn_norm = LayerNormSparse(config.hidden_size, eps=1e-6, masker=masker, quantize=config.quantize)
+        else:
+            self.attention_norm = LayerNorm(config.hidden_size, eps=1e-6)
+            self.ffn_norm = LayerNorm(config.hidden_size, eps=1e-6)
+
+        if new_backrazor:
+            self.ffn = MlpActPrune(config, masker, new_backrazor_item)
+        elif attn_store_prune:
             assert masker is not None
-            # self.ffn = MlpActPrune(config, masker)
             self.ffn = MlpActivationPrune(config, masker.prune_ratio)
         else:
             self.ffn = Mlp(config)
 
-        if attn_store_prune:
+        if new_backrazor:
+            self.attn = AttentionActPrune(config, vis, masker, new_backrazor_item=new_backrazor_item)
+        elif attn_store_prune:
             assert not prune_mode
             assert masker is not None
-
-            # self.attn = AttentionActPrune(config, vis, masker)
-
             self.attn = AttentionStoreActivationPrune(config, vis,
                                                       prune_ratio_attn_mat_store=masker.prune_ratio,
                                                       prune_ratio_act_store=masker.prune_ratio)
@@ -306,7 +311,7 @@ class Encoder(nn.Module):
 
 
 class Transformer(nn.Module):
-    def __init__(self, config, img_size, vis, prune_mode=False, prune_after_softmax=False, quantize=False, **kwargs):
+    def __init__(self, config, img_size, vis, prune_mode=False, prune_after_softmax=False, quantize=False,**kwargs):
         super(Transformer, self).__init__()
         self.embeddings = Embeddings(config, img_size=img_size)
         config.quantize = quantize

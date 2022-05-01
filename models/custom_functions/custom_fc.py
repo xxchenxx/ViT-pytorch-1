@@ -15,7 +15,6 @@ class linear(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, weight, bias=None, mask=None, quantize=True, clip_val=None, level=256, iteration=None, ema_decay=None, quant_groups=None, shift=None):
         shape_x, mask_x, sparse_x = sparsify(x, mask, with_batch_size=False)
-
         if quantize:
             custom_quant.Quant.forward(ctx, sparse_x, clip_val, level, iteration, ema_decay, quant_groups, shift)
             ctx.save_for_backward(weight, bias, shape_x, mask_x)

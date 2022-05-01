@@ -34,21 +34,26 @@ def testGradDif(model1, model2):
 def testAllGradDif():
     config = CONFIGS["ViT-B_16"]
 
-    masker = Masker(prune_ratio=0.5)
+    masker = Masker(prune_ratio=0.0)
     config = CONFIGS["ViT-B_16"]
+    config.transformer.dropout_rate = 0
+    # model_our = VisionTransformer(config, 224, zero_head=True, num_classes=100,
+    #                               attn_store_prune=False,
+    #                               masker=masker, quantize=False,
+    #                               new_backrazor=True, new_backrazor_item=["fc", "matmul", "softmax", "gelu", "layernorm"]).cuda()
+
     model_our = VisionTransformer(config, 224, zero_head=True, num_classes=100,
                                   attn_store_prune=True,
                                   masker=masker, quantize=False).cuda()
-    model_our.eval()
 
     config = CONFIGS["ViT-B_16"]
+    config.transformer.dropout_rate = 0
     model_origin = VisionTransformer(config, 224, zero_head=True, num_classes=100,
                                      attn_store_prune=False,
-                                      masker=None, quantize=False).cuda()
-    model_origin.eval()
+                                     masker=None, quantize=False).cuda()
 
     msg = model_our.load_state_dict(model_origin.state_dict(), strict=False)
-    print(msg)
+    # print(msg)
 
     input = torch.rand(8, 3, 224, 224).cuda()
     label = torch.LongTensor([0,12,33,4,6,8,9,1]).to(input.device)
@@ -66,8 +71,45 @@ def testAllGradDif():
     testGradDif(model_origin, model_our)
 
 
+def testAllGradDifPruned():
+    config = CONFIGS["ViT-B_16"]
+
+    masker = Masker(prune_ratio=0.5)
+    config = CONFIGS["ViT-B_16"]
+    config.transformer.dropout_rate = 0
+    model_new_prune = VisionTransformer(config, 224, zero_head=True, num_classes=100,
+                                  attn_store_prune=False,
+                                  masker=masker, quantize=False,
+                                  new_backrazor=True, new_backrazor_item=["fc", "matmul", "softmax"]).cuda()
+
+    config = CONFIGS["ViT-B_16"]
+    config.transformer.dropout_rate = 0
+    model_old_prune = VisionTransformer(config, 224, zero_head=True, num_classes=100,
+                                  attn_store_prune=True,
+                                  masker=masker, quantize=False).cuda()
+
+    msg = model_new_prune.load_state_dict(model_old_prune.state_dict(), strict=False)
+    # print(msg)
+
+    input = torch.rand(8, 3, 224, 224).cuda()
+    label = torch.LongTensor([0,12,33,4,6,8,9,1]).to(input.device)
+
+    mlp_origin_out, _ = model_old_prune(input)
+    loss_origin = F.cross_entropy(mlp_origin_out, label)
+    loss_origin.backward()
+
+    # when prune ratio is 0, the two should be equal
+    mlp_our_out, _ = model_new_prune(input)
+    loss_our = F.cross_entropy(mlp_our_out, label)
+    loss_our.backward()
+
+    print("loss_our - loss_origin is {}".format((loss_our - loss_origin).item()))
+    testGradDif(model_new_prune, model_old_prune)
+
+
 if __name__ == "__main__":
-    testAllGradDif()
+    # testAllGradDif()
+    testAllGradDifPruned()
     # testMlpStoreActivationPrune()
     # testMesaMlp()
     # testMlpStoreActivationPrune()

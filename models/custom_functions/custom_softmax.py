@@ -8,6 +8,8 @@ from mesa import packbit
 
 from .sparse_matrix import sparsify, unsparsify
 
+from pdb import set_trace
+
 class softmax(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, masker, quantize, dim,

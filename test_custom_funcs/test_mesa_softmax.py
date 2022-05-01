@@ -16,7 +16,7 @@ import mesa
 
 def testMemorySoftmax():
     # masker = None
-    masker = Masker(prune_ratio=0.0)
+    masker = Masker(prune_ratio=0.5)
 
     model = nn.Sequential(*[nn.Linear(384, 384)]+[SoftmaxSparse(dim=-1, quantize=False, masker=masker) for _ in range(10)])
     # model = nn.Sequential(*[nn.Linear(384, 384)] + [nn.Softmax(dim=-1) for _ in range(10)])
@@ -82,7 +82,7 @@ def testMesaMlp():
 def testMlpStoreActivationPrune():
     mlp_origin = nn.Sequential(*[nn.Linear(384, 384)] + [mesa.Softmax(dim=-1) for _ in range(1)]).cuda()
 
-    masker = Masker(prune_ratio=0.0)
+    masker = Masker(prune_ratio=0.8)
     mlp_our = nn.Sequential(*[nn.Linear(384, 384)]+[SoftmaxSparse(dim=-1, quantize=False, masker=masker) for _ in range(1)]).cuda()
 
 
@@ -116,7 +116,7 @@ def testMlpStoreActivationPrune():
 
 
 if __name__ == "__main__":
-    testMemorySoftmax()
-    # testMlpStoreActivationPrune()
+    # testMemorySoftmax()
+    testMlpStoreActivationPrune()
     # testMesaMlp()
     # testMlpStoreActivationPrune()

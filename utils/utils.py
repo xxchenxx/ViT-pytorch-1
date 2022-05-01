@@ -46,10 +46,13 @@ def setup(args, log):
         model = VisionTransformerMesa(config, args.img_size, zero_head=True, num_classes=num_classes)
     else:
         masker = None if not args.attn_store_prune else Masker(prune_ratio=args.back_prune_ratio)
+        if args.new_backrazor:
+            assert not args.attn_store_prune
         model = VisionTransformer(config, args.img_size, zero_head=True, num_classes=num_classes,
                                   prune_mode=args.prune, prune_after_softmax=args.prune_after_softmax,
                                   attn_store_prune=args.attn_store_prune,
-                                  masker=masker, quantize=args.quantize)
+                                  masker=masker, quantize=args.quantize,
+                                  new_backrazor=args.new_backrazor, new_backrazor_item=["fc", "matmul", "softmax"])
 
     model.load_from(np.load(args.pretrained_dir))
     model.to(args.device)

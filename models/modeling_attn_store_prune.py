@@ -76,8 +76,6 @@ class LinearFunctionActivationPrune(torch.autograd.Function):
         # ctx.save_for_backward(weight, bias)
         # ctx.input_prune = SparseTensor(input_prune, mask_prune)
 
-        print("mask float mean is {}".format(mask_prune.float().mean()))
-
         shape, mask, sparse = sparsify(input_prune, mask_prune)
         ctx.save_for_backward(weight, bias, shape, mask, sparse)
 

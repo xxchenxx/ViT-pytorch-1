@@ -80,7 +80,7 @@ def testMesaMlp():
 def testMlpStoreActivationPrune():
     mlp_origin = nn.Sequential(*[nn.Linear(384, 384) for _ in range(10)]).cuda()
 
-    masker = Masker(prune_ratio=0.0)
+    masker = Masker(prune_ratio=0.5)
     mlp_our = nn.Sequential(*[LinearSparse(384, 384, quantize=False, masker=masker) for _ in range(10)]).cuda()
 
     mlp_our.load_state_dict(mlp_origin.state_dict(), strict=False)
@@ -115,6 +115,6 @@ def testMlpStoreActivationPrune():
 
 
 if __name__ == "__main__":
-    testMemoryMlp()
+    # testMemoryMlp()
     # testMesaMlp()
-    # testMlpStoreActivationPrune()
+    testMlpStoreActivationPrune()

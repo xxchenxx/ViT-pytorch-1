@@ -20,13 +20,23 @@ from torch.nn import Dropout, Softmax, Linear
 
 
 class MlpActPrune(nn.Module):
-    def __init__(self, config, masker):
+    def __init__(self, config, masker, new_backrazor_item=["fc", "matmul", "softmax", "gelu", "layernorm"]):
         super(MlpActPrune, self).__init__()
 
-        self.fc1 = LinearSparse(config.hidden_size, config.transformer["mlp_dim"], quantize=config.quantize, masker=masker)
-        self.fc2 = LinearSparse(config.transformer["mlp_dim"], config.hidden_size, quantize=config.quantize, masker=masker)
-        self.act_fn = GELUSparse(quantize=config.quantize, masker=masker)
-        # self.act_fn = nn.GELU()
+        if "fc" in new_backrazor_item:
+            print("employ new sparse mlp for MLP block")
+            self.fc1 = LinearSparse(config.hidden_size, config.transformer["mlp_dim"], quantize=config.quantize, masker=masker)
+            self.fc2 = LinearSparse(config.transformer["mlp_dim"], config.hidden_size, quantize=config.quantize, masker=masker)
+        else:
+            self.fc1 = Linear(config.hidden_size, config.transformer["mlp_dim"])
+            self.fc2 = Linear(config.transformer["mlp_dim"], config.hidden_size)
+
+        if "gelu" in new_backrazor_item:
+            print("employ new sparse GELU for MLP block")
+            self.act_fn = GELUSparse(quantize=config.quantize, masker=masker)
+        else:
+            self.act_fn = torch.nn.functional.gelu
+
         self.dropout = Dropout(config.transformer["dropout_rate"])
 
         self._init_weights()
@@ -47,29 +57,48 @@ class MlpActPrune(nn.Module):
 
 
 class AttentionActPrune(nn.Module):
-    def __init__(self, config, vis, masker):
+    def __init__(self, config, vis, masker, new_backrazor_item=["fc", "matmul", "softmax", "gelu", "layernorm"]):
         super(AttentionActPrune, self).__init__()
         self.vis = vis
         self.masker = masker
+        self.new_backrazor_item = new_backrazor_item
         self.num_attention_heads = config.transformer["num_heads"]
         self.attention_head_size = int(config.hidden_size / self.num_attention_heads)
         self.all_head_size = self.num_attention_heads * self.attention_head_size
 
-        self.query = LinearSparse(config.hidden_size, self.all_head_size, quantize=config.quantize, masker=masker)
-        self.key = LinearSparse(config.hidden_size, self.all_head_size, quantize=config.quantize, masker=masker)
-        self.value = LinearSparse(config.hidden_size, self.all_head_size, quantize=config.quantize, masker=masker)
+        if "fc" in new_backrazor_item:
+            print("employ new sparse fc for Attn block")
+            self.query = LinearSparse(config.hidden_size, self.all_head_size, quantize=config.quantize, masker=masker)
+            self.key = LinearSparse(config.hidden_size, self.all_head_size, quantize=config.quantize, masker=masker)
+            self.value = LinearSparse(config.hidden_size, self.all_head_size, quantize=config.quantize, masker=masker)
 
-        self.out = LinearSparse(config.hidden_size, config.hidden_size, quantize=config.quantize, masker=masker)
+            self.out = LinearSparse(config.hidden_size, config.hidden_size, quantize=config.quantize, masker=masker)
+        else:
+            self.query = nn.Linear(config.hidden_size, self.all_head_size)
+            self.key = nn.Linear(config.hidden_size, self.all_head_size)
+            self.value = nn.Linear(config.hidden_size, self.all_head_size)
+
+            self.out = nn.Linear(config.hidden_size, config.hidden_size)
 
         assert config.transformer["attention_dropout_rate"] == 0
         # self.attn_dropout = Dropout(config.transformer["attention_dropout_rate"])
         self.proj_dropout = Dropout(config.transformer["attention_dropout_rate"])
 
-        self.mm1 = MatMulSparse(quantize=config.quantize, masker=masker)
-        # self.softmax_mm2 = SoftmaxMatMulSparse(quantize=config.quantize, masker=masker, dim=-1)
-        self.mm2 = MatMulSparse(quantize=config.quantize, masker=masker)
+        if "matmul" in new_backrazor_item:
+            print("employ new sparse matmul for Attn block")
+            self.mm1 = MatMulSparse(quantize=config.quantize, masker=masker)
+            # self.softmax_mm2 = SoftmaxMatMulSparse(quantize=config.quantize, masker=masker, dim=-1)
+            self.mm2 = MatMulSparse(quantize=config.quantize, masker=masker)
+        else:
+            self.mm1 = torch.matmul
+            # self.softmax_mm2 = SoftmaxMatMulSparse(quantize=config.quantize, masker=masker, dim=-1)
+            self.mm2 = torch.matmul
 
-        self.softmax = SoftmaxSparse(dim=-1, quantize=config.quantize, masker=masker)
+        if "softmax" in new_backrazor_item:
+            print("employ new sparse softmax for Attn block")
+            self.softmax = SoftmaxSparse(dim=-1, quantize=config.quantize, masker=masker)
+        else:
+            self.softmax = Softmax(dim=-1)
 
     def transpose_for_scores(self, x):
         new_x_shape = x.size()[:-1] + (self.num_attention_heads, self.attention_head_size)
