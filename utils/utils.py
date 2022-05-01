@@ -45,7 +45,7 @@ def setup(args, log):
         log.info("Employ mesa transformer")
         model = VisionTransformerMesa(config, args.img_size, zero_head=True, num_classes=num_classes)
     else:
-        masker = None if not args.attn_store_prune else Masker(prune_ratio=args.back_prune_ratio)
+        masker = None if not args.new_backrazor else Masker(prune_ratio=args.back_prune_ratio)
         if args.new_backrazor:
             assert not args.attn_store_prune
         model = VisionTransformer(config, args.img_size, zero_head=True, num_classes=num_classes,

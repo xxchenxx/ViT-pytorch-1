@@ -18,6 +18,7 @@ from models.custom_functions.custom_softmax_matmul import SoftmaxMatMulSparse
 
 from torch.nn import Dropout, Softmax, Linear
 
+from pdb import set_trace
 
 class MlpActPrune(nn.Module):
     def __init__(self, config, masker, new_backrazor_item=["fc", "matmul", "softmax", "gelu", "layernorm"]):
@@ -114,7 +115,10 @@ class AttentionActPrune(nn.Module):
         key_layer = self.transpose_for_scores(mixed_key_layer)
         value_layer = self.transpose_for_scores(mixed_value_layer)
         #print(query_layer.shape)
-        attention_scores = self.mm1(query_layer, key_layer.transpose(-1, -2))
+        try:
+            attention_scores = self.mm1(query_layer, key_layer.transpose(-1, -2))
+        except:
+            set_trace()
         attention_scores = attention_scores / math.sqrt(self.attention_head_size)
 
         weights = None
