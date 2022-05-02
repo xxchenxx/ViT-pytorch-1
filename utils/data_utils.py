@@ -57,6 +57,6 @@ def get_loader(args, subset=False):
                              sampler=test_sampler,
                              batch_size=args.eval_batch_size,
                              num_workers=args.num_workers,
-                             pin_memory=True) 
+                             pin_memory=True)
 
     return train_loader, test_loader
