@@ -140,7 +140,7 @@ def bn_pre_forward(self, input):
 
 class batchnorm2d(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, input, weight, bias, mean, var, average_factor, training, need_sync, process_group, world_size, eps,
+    def forward(ctx, input, weight, bias, mask, mean, var, average_factor, training, need_sync, process_group, world_size, eps,
                 clip_val, level, iteration, ema_decay, quant_groups, shift):
         if need_sync:
             # currently not support
@@ -149,7 +149,8 @@ class batchnorm2d(torch.autograd.Function):
             output, save_mean, save_var, reverse = native.batch_norm_forward(input, weight, bias, mean, var, training, average_factor, eps)
             if training:
                 ctx.bn_parameter = (weight, bias, mean, var, save_mean, save_var, reverse, eps)
-                custom_quant.Quant.forward(ctx, input, clip_val, level, iteration, ema_decay, quant_groups, shift)
+
+                # custom_quant.Quant.forward(ctx, input, clip_val, level, iteration, ema_decay, quant_groups, shift)
         if training:
             ctx.need_sync = need_sync
         return output
@@ -162,14 +163,15 @@ class batchnorm2d(torch.autograd.Function):
         else:
             weight, bias, running_mean, running_var, save_mean, save_var, reverse, eps = ctx.bn_parameter
             # input = ctx.bn_input
-            input = custom_quant.Quant.restore(ctx)
+
+            # input = custom_quant.Quant.restore(ctx)
             grad_input, grad_weight, grad_bias = native.batch_norm_backward(input, grad_output, weight, running_mean, running_var, \
                     save_mean, save_var, 0, reverse)
             ctx.bn_input = None
             ctx.bn_parameter = None
         ctx.need_sync = None
 
-        return grad_input, grad_weight, grad_bias, None, None, None, None, None, None, None, None, None, None, None, None, None, None
+        return grad_input, grad_weight, grad_bias, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None
 
 class BatchNorm2d(nn.BatchNorm2d, custom_quant.Quant):
     def __init__(self, num_features, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True, args=None, logger=None, quant_groups=1):

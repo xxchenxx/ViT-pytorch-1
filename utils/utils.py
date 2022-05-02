@@ -5,6 +5,7 @@ import torch
 from models.modeling import VisionTransformer, CONFIGS
 from model_mesa.modeling_mesa import VisionTransformer as VisionTransformerMesa
 from models.custom_functions.masker import Masker
+from models.resnet import resnet
 
 class AverageMeter(object):
     """Computes and stores the average and current value"""
@@ -36,40 +37,53 @@ def save_model(args, model, log):
 
 
 def setup(args, log):
-    # Prepare model
-    config = CONFIGS[args.model_type]
-
     num_classes = 10 if args.dataset == "cifar10" else 100
 
-    if args.mesa:
-        log.info("Employ mesa transformer")
-        model = VisionTransformerMesa(config, args.img_size, zero_head=True, num_classes=num_classes)
+    if args.model_type in CONFIGS:
+        # Prepare model
+        config = CONFIGS[args.model_type]
+        if args.mesa:
+            log.info("Employ mesa transformer")
+            model = VisionTransformerMesa(config, args.img_size, zero_head=True, num_classes=num_classes)
+        else:
+            masker = None if not args.new_backrazor else Masker(prune_ratio=args.back_prune_ratio)
+            if args.new_backrazor:
+                assert not args.attn_store_prune
+
+            backrazor_items = ["fc", "matmul", "softmax"]
+
+            if args.backrazor_with_layernorm:
+                backrazor_items.append("layernorm")
+
+            if args.backrazor_with_gelu:
+                backrazor_items.append("gelu")
+
+            model = VisionTransformer(config, args.img_size, zero_head=True, num_classes=num_classes,
+                                      prune_mode=args.prune, prune_after_softmax=args.prune_after_softmax,
+                                      attn_store_prune=args.attn_store_prune,
+                                      masker=masker, quantize=args.quantize,
+                                      new_backrazor=args.new_backrazor, new_backrazor_item=backrazor_items)
+
+        model.load_from(np.load(args.pretrained_dir))
+        log.info("{}".format(config))
     else:
         masker = None if not args.new_backrazor else Masker(prune_ratio=args.back_prune_ratio)
+        model = resnet.__dict__[args.model_type](pretrained=True, num_classes=num_classes,
+                                                new_backrazor=args.new_backrazor, masker=masker)
+
         if args.new_backrazor:
-            assert not args.attn_store_prune
+            print("when pruning backpropogation of resnet, fix the bn")
+            for name, parameter in model.named_parameters():
+                if "bn" in name:
+                    print("fix {}".format(name))
+                    parameter.requires_grad = False
 
-        backrazor_items = ["fc", "matmul", "softmax"]
-
-        if args.backrazor_with_layernorm:
-            backrazor_items.append("layernorm")
-
-        if args.backrazor_with_gelu:
-            backrazor_items.append("gelu")
-
-        model = VisionTransformer(config, args.img_size, zero_head=True, num_classes=num_classes,
-                                  prune_mode=args.prune, prune_after_softmax=args.prune_after_softmax,
-                                  attn_store_prune=args.attn_store_prune,
-                                  masker=masker, quantize=args.quantize,
-                                  new_backrazor=args.new_backrazor, new_backrazor_item=backrazor_items)
-
-    model.load_from(np.load(args.pretrained_dir))
     model.to(args.device)
     num_params = count_parameters(model)
 
-    log.info("{}".format(config))
     log.info("Training parameters {}".format(args))
     log.info("Total Parameter: \t {}M".format(num_params))
+
     return args, model
 
 

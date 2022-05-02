@@ -27,6 +27,11 @@ from prune.masking import Masking
 import time
 import mesa as ms
 
+from torch import nn
+
+from pdb import set_trace
+from models.resnet.resnet import ResNet
+
 
 def valid(args, model, writer, test_loader, global_step, log):
     # Validation!
@@ -45,7 +50,10 @@ def valid(args, model, writer, test_loader, global_step, log):
         batch = tuple(t.to(args.device) for t in batch)
         x, y = batch
         with torch.no_grad():
-            logits = model(x)[0]
+            if "resnet" in args.model_type:
+                logits = model(x)
+            else:
+                logits = model(x)[0]
 
             eval_loss = loss_fct(logits, y)
             eval_losses.update(eval_loss.item())
@@ -153,7 +161,13 @@ def train(args, model, masking, log, writer):
             batch = tuple(t.to(args.device) for t in batch)
 
             x, y = batch
-            loss = model(x, y)
+
+            # set_trace()
+            if "resnet" in args.model_type:
+                pred = model(x)
+                loss = nn.CrossEntropyLoss()(pred, y)
+            else:
+                loss = model(x, y)
 
             if args.gradient_accumulation_steps > 1:
                 loss = loss / args.gradient_accumulation_steps
@@ -217,7 +231,8 @@ def main():
     parser.add_argument("--dataset", choices=["cifar10", "cifar100"], default="cifar10",
                         help="Which downstream task.")
     parser.add_argument("--model_type", choices=["ViT-B_16", "ViT-B_32", "ViT-L_16",
-                                                 "ViT-L_32", "ViT-H_14", "R50-ViT-B_16"],
+                                                 "ViT-L_32", "ViT-H_14", "R50-ViT-B_16",
+                                                 "resnet50"],
                         default="ViT-B_16",
                         help="Which variant to use.")
     parser.add_argument("--pretrained_dir", type=str, default="checkpoint/ViT-B_16.npz",
@@ -285,6 +300,7 @@ def main():
     parser.add_argument('--back_prune_ratio', type=float, default=0.0, help="the prune ratio of prune_ratio_act_store")
 
     parser.add_argument('--new_backrazor', action="store_true", help="if employing the new backrazor")
+    # parser.add_argument('--new_backrazor_bits', type=int, default=32, choices=[8, 16], help="if employing the new backrazor")
     parser.add_argument('--backrazor_with_layernorm', action="store_true", help="if employing the layernorm")
     parser.add_argument('--backrazor_with_gelu', action="store_true", help="if employing gelu")
     parser.add_argument('--quantize', action="store_true", help="while pruning, also do the quantization")
@@ -362,13 +378,13 @@ def main():
 
         return
 
-    if args.mesa:
+    if args.mesa or (args.new_backrazor and args.quantize):
         for name, module in model.named_modules():
             module.name = name
         ms.policy.deploy_on_init(model, 'model_mesa/policy_tiny-8bit.txt', verbose=print, override_verbose=False)
         model.to(args.device)
 
-    print(model)
+    log.info(str(model))
     masking = None
     if args.prune:
         masking = Masking(model, death_rate=args.prune_death_rate, density=args.prune_dense_ratio,

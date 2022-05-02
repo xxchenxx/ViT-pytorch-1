@@ -14,7 +14,7 @@ def sparsify(tensor, mask, with_batch_size=False):
     else:
         sparse = sparse.unsqueeze(0)
 
-    # mask = packbit.packbits_padded(mask)
+    mask = packbit.packbits_padded(mask)
 
     # idle value
     # mask = torch.ones(1, device=tensor.device)
@@ -24,7 +24,7 @@ def sparsify(tensor, mask, with_batch_size=False):
 
 
 def unsparsify(shape, mask, sparse, with_batch_size=False):
-    # mask = packbit.unpackbits_padded(mask).to(dtype=torch.bool)
+    mask = packbit.unpackbits_padded(mask).to(dtype=torch.bool)
     if with_batch_size:
         sparse = sparse.view(-1)
     else:

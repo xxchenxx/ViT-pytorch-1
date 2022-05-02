@@ -88,7 +88,8 @@ class layer_norm(torch.autograd.Function):
 
 
 class LayerNormSparse(nn.LayerNorm, custom_quant.Quant):
-    def __init__(self, normalized_shape, eps=1e-05, elementwise_affine=True, args=None, logger=None, quant_groups=1, masker=None, quantize=False):
+    def __init__(self, normalized_shape, eps=1e-05, elementwise_affine=True, args=None, logger=None, quant_groups=1,
+                 masker=None, quantize=False, backrazor_bits=32):
         super(LayerNormSparse, self).__init__(normalized_shape, eps=eps, elementwise_affine=elementwise_affine)
         custom_quant.Quant.__init__(self, args=args, logger=logger, quant_groups=quant_groups)
         self.tag = 'layernorm'

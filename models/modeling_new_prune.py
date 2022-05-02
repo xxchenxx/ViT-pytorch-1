@@ -20,6 +20,8 @@ from torch.nn import Dropout, Softmax, Linear
 
 from pdb import set_trace
 
+import mesa as ms
+
 class MlpActPrune(nn.Module):
     def __init__(self, config, masker, new_backrazor_item=["fc", "matmul", "softmax", "gelu", "layernorm"]):
         super(MlpActPrune, self).__init__()
@@ -32,9 +34,12 @@ class MlpActPrune(nn.Module):
             self.fc1 = Linear(config.hidden_size, config.transformer["mlp_dim"])
             self.fc2 = Linear(config.transformer["mlp_dim"], config.hidden_size)
 
+        self.num_attention_heads = config.transformer["num_heads"]
         if "gelu" in new_backrazor_item:
             print("employ new sparse GELU for MLP block")
             self.act_fn = GELUSparse(quantize=config.quantize, masker=masker)
+        elif config.quantize:
+            self.act_fn = ms.GELU(quant_groups=self.num_attention_heads)
         else:
             self.act_fn = torch.nn.functional.gelu
 

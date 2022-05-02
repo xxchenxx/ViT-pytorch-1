@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
 import sys
 import logging
 
@@ -8,15 +9,19 @@ from mesa import custom_quant
 from mesa import native
 from mesa import packbit
 
+from .sparse_matrix import sparsify, unsparsify
+from pdb import set_trace
+
 # Uniform Quantization based Convolution
 class conv2d_uniform(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, x, weight, bias, stride, padding, dilation, groups, clip_val, level, iteration, ema_decay, quant_groups, shift):
+    def forward(ctx, x, weight, bias, mask, stride, padding, dilation, groups, clip_val, level, iteration, ema_decay, quant_groups, shift):
+        shape_x, mask_x, sparse_x = sparsify(x, mask, with_batch_size=False)
 
-        custom_quant.Quant.forward(ctx, x, clip_val, level, iteration, ema_decay, quant_groups, shift)
+        # custom_quant.Quant.forward(ctx, x, clip_val, level, iteration, ema_decay, quant_groups, shift)
         x = F.conv2d(x, weight, bias, stride, padding, dilation, groups)
 
-        ctx.conv_weight = (weight, bias)
+        ctx.save_for_backward(shape_x, mask_x, sparse_x, weight, bias)
         ctx.hyperparameters_conv = (stride, padding, dilation, groups)
         return x
 
@@ -24,10 +29,11 @@ class conv2d_uniform(torch.autograd.Function):
     def backward(ctx, grad_output):
         grad_input, grad_weight, grad_bias = None, None, None
 
-        weight, bias = ctx.conv_weight
+        shape_x, mask_x, sparse_x, weight, bias = ctx.saved_tensors
         stride, padding, dilation, groups = ctx.hyperparameters_conv
 
-        x = custom_quant.Quant.restore(ctx)
+        x = unsparsify(shape_x, mask_x, sparse_x)
+        # x = custom_quant.Quant.restore(ctx)
         # conv
         benchmark = True
         deterministic = True
@@ -48,21 +54,23 @@ class conv2d_uniform(torch.autograd.Function):
 
         ctx.conv_weight = None
         ctx.hyperparameters_conv = None
-        return grad_input, grad_weight, grad_bias, None, None, None, None, None, None, None, None, None, None, None
+        return grad_input, grad_weight, grad_bias, None, None, None, None, None, None, None, None, None, None, None, None
 
 
-class Conv2d(nn.Conv2d, custom_quant.Quant):
-    def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0, dilation=1, groups=1, bias=True, args=None, logger=None, quant_groups=1):
-        super(Conv2d, self).__init__(in_channels, out_channels, kernel_size, stride=stride, padding=padding, dilation=dilation, groups=groups, bias=bias)
+class SparseConv2d(nn.Conv2d, custom_quant.Quant):
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0, dilation=1, groups=1, bias=True, args=None, logger=None, quant_groups=1, masker=None):
+        super(SparseConv2d, self).__init__(in_channels, out_channels, kernel_size, stride=stride, padding=padding, dilation=dilation, groups=groups, bias=bias)
         custom_quant.Quant.__init__(self, args=args, logger=logger, quant_groups=quant_groups)
+        self.masker = masker
         self.tag = 'conv'
 
     def __repr__(self):
         return self.__str__()
 
     def forward(self, x):
-        if self.enable and self.training:
-            y = conv2d_uniform.apply(x, self.weight, self.bias, self.stride, self.padding, self.dilation, self.groups,
+        if self.masker is not None and self.training:
+            mask = self.masker(x)
+            y = conv2d_uniform.apply(x, self.weight, self.bias, mask, self.stride, self.padding, self.dilation, self.groups,
                                      self.clip_val, self.level, self.iteration, self.ema_decay, self.quant_groups, self.shift)
         else:
             y = F.conv2d(x, self.weight, self.bias, self.stride, self.padding, self.dilation, self.groups)
