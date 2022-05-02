@@ -7,30 +7,37 @@ def sparsify(tensor, mask, with_batch_size=False):
     shape = tensor.shape
     shape = torch.tensor(shape)
 
-    mask = mask.reshape(-1)
-    sparse = tensor.reshape(-1)[mask]
-    if with_batch_size:
-        sparse = sparse.reshape(shape[0], -1)
-    else:
-        sparse = sparse.unsqueeze(0)
+    # mask = mask.reshape(-1)
+    # sparse = tensor.reshape(-1)[mask]
+    # if with_batch_size:
+    #     sparse = sparse.reshape(shape[0], -1)
+    # else:
+    #     sparse = sparse.unsqueeze(0)
+    #
+    # mask = packbit.packbits_padded(mask)
 
-    mask = packbit.packbits_padded(mask)
+    # idle value
+    mask = torch.ones(1, device=tensor.device)
+    sparse = tensor
 
     return shape, mask, sparse
 
 
 def unsparsify(shape, mask, sparse, with_batch_size=False):
-    mask = packbit.unpackbits_padded(mask).to(dtype=torch.bool)
-    if with_batch_size:
-        sparse = sparse.view(-1)
-    else:
-        sparse = sparse.squeeze(0)
+    # mask = packbit.unpackbits_padded(mask).to(dtype=torch.bool)
+    # if with_batch_size:
+    #     sparse = sparse.view(-1)
+    # else:
+    #     sparse = sparse.squeeze(0)
+    #
+    # dense = torch.zeros(mask.shape, device=sparse.device, dtype=sparse.dtype)
+    # dense[mask] = sparse
+    #
+    # shape = torch.Size(shape)
+    # return dense.reshape(shape)
 
-    dense = torch.zeros(mask.shape, device=sparse.device, dtype=sparse.dtype)
-    dense[mask] = sparse
-
-    shape = torch.Size(shape)
-    return dense.reshape(shape)
+    # idle
+    return sparse
 
 
 if __name__ == "__main__":
