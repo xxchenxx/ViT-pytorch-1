@@ -84,7 +84,8 @@ def valid(args, model, writer, test_loader, global_step, log):
     log.info("Valid Accuracy: {}".format(accuracy))
     log.info("Time spent: {:.2f}".format(time.time() - end))
 
-    writer.add_scalar("test/accuracy", scalar_value=accuracy, global_step=global_step)
+    if args.local_rank in [-1, 0]:
+        writer.add_scalar("test/accuracy", scalar_value=accuracy, global_step=global_step)
     return accuracy
 
 
@@ -201,8 +202,8 @@ def train(args, model, masking, log, writer):
                 if args.local_rank in [-1, 0]:
                     writer.add_scalar("train/loss", scalar_value=losses.val, global_step=global_step)
                     writer.add_scalar("train/lr", scalar_value=scheduler.get_lr()[0], global_step=global_step)
+                accuracy = valid(args, model, writer, test_loader, global_step, log)
                 if global_step % args.eval_every == 0 and args.local_rank in [-1, 0]:
-                    accuracy = valid(args, model, writer, test_loader, global_step, log)
                     if best_acc < accuracy:
                         save_model(args, model, log)
                         best_acc = accuracy
