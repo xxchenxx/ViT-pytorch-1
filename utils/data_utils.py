@@ -30,7 +30,7 @@ def get_loader(args, subset=False):
         testset = datasets.CIFAR10(root="./data",
                                    train=False,
                                    download=True,
-                                   transform=transform_test) if args.local_rank in [-1, 0] else None
+                                   transform=transform_test)
 
     else:
         trainset = datasets.CIFAR100(root="./data",
@@ -40,7 +40,7 @@ def get_loader(args, subset=False):
         testset = datasets.CIFAR100(root="./data",
                                     train=False,
                                     download=True,
-                                    transform=transform_test) if args.local_rank in [-1, 0] else None
+                                    transform=transform_test)
     if subset:
         trainset = torch.utils.data.Subset(trainset, list(range(50)))
     if args.local_rank == 0:
@@ -57,6 +57,6 @@ def get_loader(args, subset=False):
                              sampler=test_sampler,
                              batch_size=args.eval_batch_size,
                              num_workers=args.num_workers,
-                             pin_memory=True) if testset is not None else None
+                             pin_memory=True) 
 
     return train_loader, test_loader
