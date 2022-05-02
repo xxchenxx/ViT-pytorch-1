@@ -77,6 +77,7 @@ def count_activation_size(net, input_size=(1, 3, 224, 224), require_backward=Tru
 
 		if isinstance(m, LinearSparse) and m.masker is not None:
 			mask = m.masker(x[0])
+			# print("mlp density is {}".format(mask.float().mean().cpu()))
 			m.grad_activations *= mask.float().mean().cpu()
 			m.grad_activations += (mask.numel() / 8)
 
@@ -85,6 +86,7 @@ def count_activation_size(net, input_size=(1, 3, 224, 224), require_backward=Tru
 
 	# noinspection PyArgumentList
 	def count_bn(m, x, _):
+		# print("count LN")
 		# count activation size required by backward
 		if m.weight is not None and m.weight.requires_grad:
 			m.grad_activations = torch.Tensor([x[0].numel() * act_byte])  # bytes
@@ -93,6 +95,7 @@ def count_activation_size(net, input_size=(1, 3, 224, 224), require_backward=Tru
 
 		if isinstance(m, LayerNormSparse) and m.masker is not None:
 			mask = m.masker(x[0])
+			# print("layer norm density is {}".format(mask.float().mean().cpu()))
 			m.grad_activations *= mask.float().mean().cpu()
 			m.grad_activations += (mask.numel() / 8)
 
@@ -111,6 +114,7 @@ def count_activation_size(net, input_size=(1, 3, 224, 224), require_backward=Tru
 
 	# noinspection PyArgumentList
 	def count_smooth_act(m, x, _):
+		# print("count gelu")
 		# count activation size required by backward
 		if require_backward:
 			m.grad_activations = torch.Tensor([x[0].numel() * act_byte])  # bytes
@@ -143,7 +147,7 @@ def count_activation_size(net, input_size=(1, 3, 224, 224), require_backward=Tru
 			fn = count_bn
 		elif type(m_) in [nn.ReLU, nn.ReLU6, nn.LeakyReLU]:
 			fn = count_relu
-		elif type(m_) in [nn.Sigmoid, nn.Tanh, nn.GELU, GELUSparse]:
+		elif type(m_) in [nn.Sigmoid, nn.Tanh]:
 			fn = count_smooth_act
 		else:
 			fn = None
@@ -184,9 +188,12 @@ def count_activation_size(net, input_size=(1, 3, 224, 224), require_backward=Tru
 		if isinstance(m, Attention) or isinstance(m, AttentionStoreActivationPrune) or isinstance(m, AttentionActPrune):
 			def new_forward(_module):
 				def lambda_forward(_x):
-					memory_info_dict['residual_size'] = _x.numel() * act_byte
+					# print("count Attention")
+					memory_info_dict['residual_size'] = _x[0].numel() * act_byte
 					# save key, query, value
-					n_tokens = _x.shape[2]
+					# print("_x.shape is {}".format(_x.shape))
+					n_tokens = _x.shape[1]
+					# set_trace()
 
 					# attn_matrix
 					if isinstance(_module, AttentionStoreActivationPrune) or isinstance(_module, AttentionActPrune):
@@ -194,12 +201,13 @@ def count_activation_size(net, input_size=(1, 3, 224, 224), require_backward=Tru
 							attn_prune_ratio = _module.prune_ratio_act_store
 						else:
 							attn_prune_ratio = _module.masker.prune_ratio
+						# print("attn_prune_ratio is {}".format(attn_prune_ratio))
 						# attn matrix
 						memory_info_dict['grad_activation_size'] += _module.num_attention_heads * n_tokens * n_tokens * (act_byte) * (1 - attn_prune_ratio)
 						memory_info_dict['grad_activation_size'] += _module.num_attention_heads * n_tokens * n_tokens * 1/8
 						# key, query, value
 						memory_info_dict['grad_activation_size'] += 3 * _module.all_head_size * n_tokens * (act_byte) * (1 - attn_prune_ratio)
-						memory_info_dict['grad_activation_size'] += 3 * _module.all_head_size * n_tokens
+						memory_info_dict['grad_activation_size'] += 3 * _module.all_head_size * n_tokens * 1/8
 					else:
 						memory_info_dict['grad_activation_size'] += _module.num_attention_heads * n_tokens * n_tokens * act_byte
 						memory_info_dict['grad_activation_size'] += 3 * _module.all_head_size * n_tokens * act_byte
@@ -216,8 +224,14 @@ def count_activation_size(net, input_size=(1, 3, 224, 224), require_backward=Tru
 		if isinstance(m, Mlp) or isinstance(m, MlpActivationPrune) or isinstance(m, MlpActPrune):
 			def new_forward(_module):
 				def lambda_forward(_x):
-					memory_info_dict['residual_size'] = _x.numel() * act_byte
+					# print("count Mlp")
+					memory_info_dict['residual_size'] = _x[0].numel() * act_byte
 					# gelu function
+					# print("_x.shape is {}".format(_x.shape))
+					n_tokens = _x.shape[1]
+					# set_trace()
+
+					memory_info_dict['grad_activation_size'] += _module.fc1.out_features * n_tokens * act_byte
 					result = _module.old_forward(_x)
 					memory_info_dict['residual_size'] = 0
 					return result
@@ -236,8 +250,10 @@ def count_activation_size(net, input_size=(1, 3, 224, 224), require_backward=Tru
 def profile_memory_cost(net, input_size=(1, 3, 224, 224), require_backward=True,
                         activation_bits=32, trainable_param_bits=32, frozen_param_bits=8, batch_size=8):
 	param_size = count_model_size(net, trainable_param_bits, frozen_param_bits, print_log=True)
-	activation_size, _ = count_activation_size(net, input_size, require_backward, activation_bits)
+	activation_size, grad_activation_size = count_activation_size(net, input_size, require_backward, activation_bits)
 
+	MB = 1024 * 1024
+	print("grad activation size is {:.1f} MB".format(grad_activation_size / MB))
 	memory_cost = activation_size * batch_size + param_size
 	return memory_cost, {'param_size': param_size, 'act_size': activation_size}
 

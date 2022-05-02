@@ -355,7 +355,7 @@ def main():
         # memory_cost, {'param_size': param_size, 'act_size': activation_size}
         memory_cost, memory_cost_dict = profile_memory_cost(model, input_size=(1, 3, 224, 224), require_backward=True,
                                                             activation_bits=activation_bits, trainable_param_bits=32,
-                                                            frozen_param_bits=8, batch_size=32)
+                                                            frozen_param_bits=8, batch_size=128)
         MB = 1024 * 1024
         log.info("memory_cost is {:.1f} MB, param size is {:.1f} MB, act_size each sample is {:.1f} MB".
                  format(memory_cost / MB, memory_cost_dict["param_size"] / MB, memory_cost_dict["act_size"] / MB))
