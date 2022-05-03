@@ -36,9 +36,7 @@ def save_model(args, model, log):
     log.info("Saved model checkpoint to [DIR: {}]".format(os.path.join(log.path, args.name)))
 
 
-def setup(args, log):
-    num_classes = 10 if args.dataset == "cifar10" else 100
-
+def setup(args, log, num_classes):
     if args.model_type in CONFIGS:
         # Prepare model
         config = CONFIGS[args.model_type]

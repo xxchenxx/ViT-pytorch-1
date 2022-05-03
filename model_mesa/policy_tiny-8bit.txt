@@ -1,3 +1,8 @@
+on conv:
+  by_index: all
+  enable: True
+  level: 256
+  ema_decay: 0.9
 
 on fc:
   by_index: all

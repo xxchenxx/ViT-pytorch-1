@@ -33,11 +33,11 @@ from pdb import set_trace
 from models.resnet.resnet import ResNet
 
 
-def valid(args, model, writer, test_loader, global_step, log):
+def valid(args, model, writer, test_loader, global_step, log, phase="Validation"):
     # Validation!
     eval_losses = AverageMeter()
 
-    log.info("***** Running Validation *****")
+    log.info("***** Running {} *****".format(phase))
     log.info("  Num steps = {}".format(len(test_loader)))
     log.info("  Batch size = {}".format(args.eval_batch_size))
 
@@ -89,15 +89,12 @@ def valid(args, model, writer, test_loader, global_step, log):
     return accuracy
 
 
-def train(args, model, masking, log, writer):
+def train(args, model, train_loader, val_loader, test_loader, masking, log, writer):
     batch_time = AverageMeter()
     data_time = AverageMeter()
     memory_meter = AverageMeter()
 
     args.train_batch_size = args.train_batch_size // args.gradient_accumulation_steps
-
-    # Prepare dataset
-    train_loader, test_loader = get_loader(args)
 
     # Prepare optimizer and scheduler
     optimizer = torch.optim.SGD(model.parameters(),
@@ -203,7 +200,7 @@ def train(args, model, masking, log, writer):
                     writer.add_scalar("train/loss", scalar_value=losses.val, global_step=global_step)
                     writer.add_scalar("train/lr", scalar_value=scheduler.get_lr()[0], global_step=global_step)
                 if global_step % args.eval_every == 0:
-                    accuracy = valid(args, model, writer, test_loader, global_step, log)
+                    accuracy = valid(args, model, writer, val_loader, global_step, log)
                 if global_step % args.eval_every == 0 and args.local_rank in [-1, 0]:
                     if best_acc < accuracy:
                         save_model(args, model, log)
@@ -220,18 +217,25 @@ def train(args, model, masking, log, writer):
         if global_step % t_total == 0:
             break
 
-    if args.local_rank in [-1, 0]:
-        writer.close()
-    log.info("Best Accuracy: \t{}".format(best_acc))
+    checkpoint = torch.load(os.path.join(log.path, 'model_best.pth.tar'), map_location="cpu")
+    state_dict = checkpoint['state_dict']
+    model.module.load_state_dict(state_dict)
+    test_accuracy = valid(args, model, writer, test_loader, global_step, log, "Testing")
+    log.info("Best Accuracy: \t{}".format(test_accuracy))
     log.info("End Training!")
 
+    if args.local_rank in [-1, 0]:
+        writer.close()
 
 def main():
     parser = argparse.ArgumentParser()
     # Required parameters
     parser.add_argument("--name", required=True, help="Name of this run. Used for monitoring.")
-    parser.add_argument("--dataset", choices=["cifar10", "cifar100"], default="cifar10",
-                        help="Which downstream task.")
+    parser.add_argument("--dataset", choices=["cifar10", "cifar100", "aircraft"],
+                        default="cifar10", help="Which downstream task.")
+    parser.add_argument("--data", default="placeholder", help="Which downstream task.")
+    parser.add_argument("--customSplit", default="", help="the downstream custom split.")
+
     parser.add_argument("--model_type", choices=["ViT-B_16", "ViT-B_32", "ViT-L_16",
                                                  "ViT-L_32", "ViT-H_14", "R50-ViT-B_16",
                                                  "resnet50"],
@@ -345,8 +349,11 @@ def main():
     # Set seed
     set_seed(args)
 
+    train_loader, val_loader, test_loader = get_loader(args)
+
     # Model & Tokenizer Setup
-    args, model = setup(args, log)
+    num_classes = len(np.unique(train_loader.dataset.targets))
+    args, model = setup(args, log, num_classes)
 
     if args.memory_cost_profile:
         if args.bitfit:
@@ -395,7 +402,8 @@ def main():
                           avg_magni_var_alpha=args.prune_avg_magni_var_alpha, log=log)
 
     # Training
-    train(args, model, masking, log, writer)
+    # Prepare dataset
+    train(args, model, train_loader, val_loader, test_loader, masking, log, writer)
 
 
 if __name__ == "__main__":

@@ -35,6 +35,79 @@ class ConfigMemoryTest(object):
         self.transformer["dropout_rate"] = 0
 
 
+def testMesaConv():
+    # masker = None
+    # masker = Masker(prune_ratio=0)
+
+    # 665.1 M
+    print("test mesa memory")
+    model = nn.Sequential(*[mesa.Conv2d(in_channels=256,
+                                        out_channels=256,
+                                        kernel_size=3,
+                                        stride=1) for _ in range(5)])
+    mesa.policy.deploy_on_init(model, 'model_mesa/policy_tiny-8bit.txt', verbose=print, override_verbose=False)
+    model.cuda()
+
+    # remove gelu
+    for module in model:
+        module.act_fn = nn.Identity()
+
+    model = model.cuda()
+    input = torch.rand(16, 256, 64, 64).cuda()
+    MB = 1024.0 * 1024.0
+    print("input usage is {:.1f} MB".format(input.element_size() * input.nelement() / MB))
+
+    mlp_origin_out = model(input)
+    mlp_origin_out.sum().backward()
+
+    print("############ mesa mlp #############")
+    print("max memory is {:.1f} MB".format(torch.cuda.max_memory_allocated() / MB))
+
+    # activation_bits = 32
+    # memory_cost, memory_cost_dict = profile_memory_cost(model, input_size=(1, 196, 384), require_backward=True,
+    #                                                     activation_bits=activation_bits, trainable_param_bits=32,
+    #                                                     frozen_param_bits=8, batch_size=64)
+    # MB = 1024 * 1024
+    # print("memory_cost is {:.1f} MB, param size is {:.1f} MB, act_size each sample is {:.1f} MB".
+    #       format(memory_cost / MB, memory_cost_dict["param_size"] / MB, memory_cost_dict["act_size"] / MB))
+
+
+def testStdConv():
+    # masker = None
+    # masker = Masker(prune_ratio=0)
+
+    # 665.1 M
+    print("test mesa memory")
+    model = nn.Sequential(*[nn.Conv2d(in_channels=256,
+                                        out_channels=256,
+                                        kernel_size=3,
+                                        stride=1) for _ in range(5)])
+    model.cuda()
+
+    # remove gelu
+    for module in model:
+        module.act_fn = nn.Identity()
+
+    model = model.cuda()
+    input = torch.rand(16, 256, 64, 64).cuda()
+    MB = 1024.0 * 1024.0
+    print("input usage is {:.1f} MB".format(input.element_size() * input.nelement() / MB))
+
+    mlp_origin_out = model(input)
+    mlp_origin_out.sum().backward()
+
+    print("############ std conv #############")
+    print("max memory is {:.1f} MB".format(torch.cuda.max_memory_allocated() / MB))
+
+    # activation_bits = 32
+    # memory_cost, memory_cost_dict = profile_memory_cost(model, input_size=(1, 196, 384), require_backward=True,
+    #                                                     activation_bits=activation_bits, trainable_param_bits=32,
+    #                                                     frozen_param_bits=8, batch_size=64)
+    # MB = 1024 * 1024
+    # print("memory_cost is {:.1f} MB, param size is {:.1f} MB, act_size each sample is {:.1f} MB".
+    #       format(memory_cost / MB, memory_cost_dict["param_size"] / MB, memory_cost_dict["act_size"] / MB))
+
+
 def testMlpStoreActivationPrune():
     # configMemTest = ConfigMemoryTest()
     mlp_origin = Conv2d(96, 96, (3, 3), stride=1, padding=1).cuda()
@@ -44,7 +117,7 @@ def testMlpStoreActivationPrune():
 
     mlp_our.load_state_dict(mlp_origin.state_dict(), strict=False)
 
-    input = torch.rand(64, 96, 36, 36).cuda()
+    input = torch.rand(64, 96, 64, 64).cuda()
     input.requires_grad = True
 
     mlp_origin_out = mlp_origin(input)
@@ -69,5 +142,6 @@ def testMlpStoreActivationPrune():
 
 
 if __name__ == "__main__":
-    # testMemoryAttention()
-    testMlpStoreActivationPrune()
+    testMesaConv()
+    # testStdConv()
+    # testMlpStoreActivationPrune()
