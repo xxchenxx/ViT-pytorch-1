@@ -47,7 +47,7 @@ def is_leaf(m_):
 		   (len(list(m_.children())) == 1 and isinstance(next(m_.children()), nn.Identity))
 
 
-def count_activation_size(net, input_size=(1, 3, 224, 224), require_backward=True, activation_bits=32):
+def count_activation_size(net, input_size=(1, 3, 224, 224), require_backward=True, activation_bits=32, head_only=False):
 	act_byte = activation_bits / 8
 	model = copy.deepcopy(net)
 
@@ -212,6 +212,9 @@ def count_activation_size(net, input_size=(1, 3, 224, 224), require_backward=Tru
 						memory_info_dict['grad_activation_size'] += _module.num_attention_heads * n_tokens * n_tokens * act_byte
 						memory_info_dict['grad_activation_size'] += 3 * _module.all_head_size * n_tokens * act_byte
 
+					if head_only:
+						memory_info_dict['grad_activation_size'] *= 0
+
 					result = _module.old_forward(_x)
 					memory_info_dict['residual_size'] = 0
 					return result
@@ -226,12 +229,16 @@ def count_activation_size(net, input_size=(1, 3, 224, 224), require_backward=Tru
 				def lambda_forward(_x):
 					# print("count Mlp")
 					memory_info_dict['residual_size'] = _x[0].numel() * act_byte
+
 					# gelu function
 					# print("_x.shape is {}".format(_x.shape))
 					n_tokens = _x.shape[1]
 					# set_trace()
-
 					memory_info_dict['grad_activation_size'] += _module.fc1.out_features * n_tokens * act_byte
+
+					if head_only:
+						memory_info_dict['grad_activation_size'] *= 0
+
 					result = _module.old_forward(_x)
 					memory_info_dict['residual_size'] = 0
 					return result
@@ -247,10 +254,10 @@ def count_activation_size(net, input_size=(1, 3, 224, 224), require_backward=Tru
 	return memory_info_dict['peak_activation_size'].item(), memory_info_dict['grad_activation_size'].item()
 
 
-def profile_memory_cost(net, input_size=(1, 3, 224, 224), require_backward=True,
+def profile_memory_cost(net, input_size=(1, 3, 224, 224), require_backward=True, head_only=False,
                         activation_bits=32, trainable_param_bits=32, frozen_param_bits=8, batch_size=8):
 	param_size = count_model_size(net, trainable_param_bits, frozen_param_bits, print_log=True)
-	activation_size, grad_activation_size = count_activation_size(net, input_size, require_backward, activation_bits)
+	activation_size, grad_activation_size = count_activation_size(net, input_size, require_backward, activation_bits, head_only)
 
 	MB = 1024 * 1024
 	print("grad activation size is {:.1f} MB".format(grad_activation_size / MB))

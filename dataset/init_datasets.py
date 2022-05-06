@@ -457,6 +457,27 @@ def get_places_sub100_data_split(root, customSplit):
     return root, txt_train, txt_val, txt_test
 
 
+def get_CUB200_data_split(root, customSplit):
+    if os.path.isdir(root):
+        root = root
+    else:
+        if os.path.isdir("../../data/CUB_200_2011/images"):
+            root = "../../data/CUB_200_2011/images"
+        elif os.path.isdir("/mnt/models/dataset/CUB_200_2011/images"):
+            root = "/mnt/models/dataset/CUB_200_2011/images"
+        else:
+            assert False
+
+    txt_train = "split/CUB_200/train_split.txt"
+    txt_val = "split/CUB_200/val_split.txt"
+    txt_test = "split/CUB_200/test_split.txt"
+
+    if customSplit != '':
+        txt_train = "split/CUB_200/{}.txt".format(customSplit)
+
+    return root, txt_train, txt_val, txt_test
+
+
 def get_chexpert_path(root):
     if os.path.isdir(root):
         root = root
@@ -490,8 +511,8 @@ def get_aircraft_path(root):
     else:
         if os.path.isdir("../../data/fgvc_aircraft"):
             root = "../../data/fgvc_aircraft"
-        elif os.path.isdir("/hdd1/ziyu/MSR/data/fgvc_aircraft"):
-            root = "/hdd1/ziyu/MSR/data/fgvc_aircraft"
+        elif os.path.isdir("/hdd1/ziyu/MSR/data/fgvc_aircraft/"):
+            root = "/hdd1/ziyu/MSR/data/fgvc_aircraft/"
         else:
             assert False
 
@@ -501,9 +522,9 @@ def get_aircraft_path(root):
 def get_aircraft_data_split(root, customSplit):
     root = get_aircraft_path(root)
 
-    txt_train = "split/aircraft/train.txt"
-    txt_val = "split/aircraft/test.txt"
-    txt_test = "split/aircraft/test.txt"
+    txt_train = "split/aircraft/train_100.txt"
+    txt_val = "split/aircraft/test_100.txt"
+    txt_test = "split/aircraft/test_100.txt"
 
     if customSplit != '':
         txt_train = "split/aircraft/{}.txt".format(customSplit)

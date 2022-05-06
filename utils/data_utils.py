@@ -7,6 +7,8 @@ from torch.utils.data import DataLoader, RandomSampler, DistributedSampler, Sequ
 
 from dataset.init_datasets import init_datasets
 
+from .co_tune import get_transforms
+
 
 def get_loader(args):
     if "resnet" in args.model_type:
@@ -15,16 +17,26 @@ def get_loader(args):
     else:
         normalization = transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
 
-    transform_train = transforms.Compose([
-        transforms.RandomResizedCrop((args.img_size, args.img_size), scale=(0.05, 1.0)),
-        transforms.ToTensor(),
-        normalization,
-    ])
-    transform_test = transforms.Compose([
-        transforms.Resize((args.img_size, args.img_size)),
-        transforms.ToTensor(),
-        normalization,
-    ])
+    if args.cotuning_trans:
+        print("employ the transform of co-tuning")
+        data_transforms = get_transforms(normalization)
+        transform_train, transform_test = data_transforms['train'], data_transforms['val']
+    else:
+        train_trans = [
+            transforms.RandomResizedCrop((args.img_size, args.img_size), scale=(0.05, 1.0)),
+            transforms.ToTensor(),
+            normalization,
+        ]
+
+        if args.train_resize_first:
+            train_trans = [transforms.Resize((args.img_size, args.img_size)), ] + train_trans
+
+        transform_train = transforms.Compose(train_trans)
+        transform_test = transforms.Compose([
+            transforms.Resize((args.img_size, args.img_size)),
+            transforms.ToTensor(),
+            normalization,
+        ])
 
     if args.local_rank not in [-1, 0]:
         torch.distributed.barrier()
@@ -34,7 +46,7 @@ def get_loader(args):
     if args.local_rank == 0:
         torch.distributed.barrier()
 
-    train_sampler = RandomSampler(trainset) if args.local_rank == -1 else DistributedSampler(trainset)
+    train_sampler = DistributedSampler(trainset)
     val_sampler = SequentialSampler(valset)
     test_sampler = SequentialSampler(testset)
     train_loader = DataLoader(trainset,

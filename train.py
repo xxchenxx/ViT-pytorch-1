@@ -97,7 +97,28 @@ def train(args, model, train_loader, val_loader, test_loader, masking, log, writ
     args.train_batch_size = args.train_batch_size // args.gradient_accumulation_steps
 
     # Prepare optimizer and scheduler
-    optimizer = torch.optim.SGD(model.parameters(),
+    if args.HeadLr10times:
+        head_params = []
+        feature_params = []
+        for name, parameter in model.named_parameters():
+            if "resnet" in args.model_type:
+                head_name = "fc"
+            else:
+                head_name = "head"
+
+            if head_name in name:
+                # print("head: {} !!!!!!".format(name))
+                head_params.append(parameter)
+            else:
+                # print(name)
+                feature_params.append(parameter)
+
+        params_list = [{"params": filter(lambda p: p.requires_grad, feature_params)},
+                       {"params": filter(lambda p: p.requires_grad, head_params), "lr": args.learning_rate * 10}]
+    else:
+        params_list = model.parameters()
+
+    optimizer = torch.optim.SGD(params_list,
                                 lr=args.learning_rate,
                                 momentum=0.9,
                                 weight_decay=args.weight_decay)
@@ -135,23 +156,12 @@ def train(args, model, train_loader, val_loader, test_loader, masking, log, writ
         masking.init(train_loader, model)
         model.train()
 
-    if args.bitfit:
-        for name, parameter in model.named_parameters():
-            print(name)
-            if "bias" in name or "head" in name:
-                parameter.requires_grad = True
-            else:
-                parameter.requires_grad = False
-
-    if args.fix_mlps:
-        for name, parameter in model.named_parameters():
-            if "head" in name or ".attn" in name:
-                print("fixmlps, not freeze {}".format(name))
-                parameter.requires_grad = True
-            else:
-                parameter.requires_grad = False
-
+    epoch = 0
     while True:
+        log.info("set epochs: {}".format(epoch))
+        train_loader.sampler.set_epoch(epoch)
+        epoch += 1
+
         model.train()
         end = time.time()
         for step, batch in enumerate(train_loader):
@@ -217,8 +227,8 @@ def train(args, model, train_loader, val_loader, test_loader, masking, log, writ
         if global_step % t_total == 0:
             break
 
-    checkpoint = torch.load(os.path.join(log.path, 'model_best.pth.tar'), map_location="cpu")
-    state_dict = checkpoint['state_dict']
+    checkpoint = torch.load(os.path.join(log.path, 'checkpoint_best.pth'), map_location="cpu")
+    state_dict = checkpoint
     model.module.load_state_dict(state_dict)
     test_accuracy = valid(args, model, writer, test_loader, global_step, log, "Testing")
     log.info("Best Accuracy: \t{}".format(test_accuracy))
@@ -227,11 +237,12 @@ def train(args, model, train_loader, val_loader, test_loader, masking, log, writ
     if args.local_rank in [-1, 0]:
         writer.close()
 
+
 def main():
     parser = argparse.ArgumentParser()
     # Required parameters
     parser.add_argument("--name", required=True, help="Name of this run. Used for monitoring.")
-    parser.add_argument("--dataset", choices=["cifar10", "cifar100", "aircraft"],
+    parser.add_argument("--dataset", choices=["cifar10", "cifar100", "aircraft", "Pet37"],
                         default="cifar10", help="Which downstream task.")
     parser.add_argument("--data", default="placeholder", help="Which downstream task.")
     parser.add_argument("--customSplit", default="", help="the downstream custom split.")
@@ -302,6 +313,7 @@ def main():
 
     # prune backward
     parser.add_argument('--fix_mlps', action="store_true", help="fix module except head and attn layer")
+    parser.add_argument('--fix_backbone', action="store_true", help="fix the feature backbone")
     parser.add_argument('--attn_store_prune', action="store_true", help="if employing attn_store_prune")
     parser.add_argument('--back_prune_ratio', type=float, default=0.0, help="the prune ratio of prune_ratio_act_store")
 
@@ -316,6 +328,12 @@ def main():
 
     # profile
     parser.add_argument('--memory_cost_profile', action="store_true", help="profile memory cost")
+
+    # fine-tune
+    parser.add_argument('--HeadLr10times', action="store_true", help="increase head lr by 10 times")
+    parser.add_argument('--train_resize_first', action="store_true", help="resize the image before "
+                                                                          "doing other training augmentations")
+    parser.add_argument('--cotuning_trans', action="store_true", help="Employ the trans of cotuning")
 
     args = parser.parse_args()
 
@@ -350,28 +368,47 @@ def main():
     set_seed(args)
 
     train_loader, val_loader, test_loader = get_loader(args)
-
-    # Model & Tokenizer Setup
     num_classes = len(np.unique(train_loader.dataset.targets))
+
+    # debug data loader
+    # from utils.co_tune import get_data_loader
+    # train_loader_2, val_loader_2, test_loader_2 = get_data_loader(args)
+    # num_classes_2 = 100
+
+    # set_trace()
+    # Model & Tokenizer Setup
     args, model = setup(args, log, num_classes)
 
+    # set_trace()
+
+    if args.bitfit:
+        assert not ("resnet" in args.model_type)
+        for name, parameter in model.named_parameters():
+            print(name)
+            if "bias" in name or "head" in name:
+                parameter.requires_grad = True
+            else:
+                parameter.requires_grad = False
+
+    if args.fix_mlps:
+        assert not ("resnet" in args.model_type)
+        for name, parameter in model.named_parameters():
+            if "head" in name or ".attn" in name:
+                print("fixmlps, not freeze {}".format(name))
+                parameter.requires_grad = True
+            else:
+                parameter.requires_grad = False
+
+    if args.fix_backbone:
+        assert not ("resnet" in args.model_type)
+        for name, parameter in model.named_parameters():
+            if "head" in name:
+                print("fix_backbone, not freeze {}".format(name))
+                parameter.requires_grad = True
+            else:
+                parameter.requires_grad = False
+
     if args.memory_cost_profile:
-        if args.bitfit:
-            for name, parameter in model.named_parameters():
-                print(name)
-                if "bias" in name or "head" in name:
-                    parameter.requires_grad = True
-                else:
-                    parameter.requires_grad = False
-
-        if args.fix_mlps:
-            for name, parameter in model.named_parameters():
-                if "head" in name or ".attn" in name:
-                    print("fixmlps, not freeze {}".format(name))
-                    parameter.requires_grad = True
-                else:
-                    parameter.requires_grad = False
-
         # if args.mesa:
         activation_bits = 32
         # else:
@@ -380,6 +417,7 @@ def main():
         # memory_cost, {'param_size': param_size, 'act_size': activation_size}
         memory_cost, memory_cost_dict = profile_memory_cost(model, input_size=(1, 3, 224, 224), require_backward=True,
                                                             activation_bits=activation_bits, trainable_param_bits=32,
+                                                            head_only=args.fix_backbone,
                                                             frozen_param_bits=8, batch_size=128)
         MB = 1024 * 1024
         log.info("memory_cost is {:.1f} MB, param size is {:.1f} MB, act_size each sample is {:.1f} MB".
