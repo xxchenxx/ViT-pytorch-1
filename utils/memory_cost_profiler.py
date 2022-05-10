@@ -139,7 +139,7 @@ def count_activation_size(net, input_size=(1, 3, 224, 224), require_backward=Tru
 		m_.register_buffer('grad_activations', torch.zeros(1))
 		m_.register_buffer('tmp_activations', torch.zeros(1))
 
-		if type(m_) in [nn.Conv1d, nn.Conv2d, nn.Conv3d]:
+		if type(m_) in [nn.Conv1d, nn.Conv2d, nn.Conv3d, ]:
 			fn = count_convNd
 		elif type(m_) in [nn.Linear, LinearActivationPrune, LinearSparse]:
 			fn = count_linear

@@ -38,10 +38,9 @@ class MlpActPrune(nn.Module):
         if "gelu" in new_backrazor_item:
             print("employ new sparse GELU for MLP block")
             self.act_fn = GELUSparse(quantize=config.quantize, masker=masker)
-        elif config.quantize:
-            self.act_fn = ms.GELU(quant_groups=self.num_attention_heads)
         else:
-            self.act_fn = torch.nn.functional.gelu
+            self.act_fn = ms.GELU(quant_groups=self.num_attention_heads)
+            self.act_fn.enable = True
 
         self.dropout = Dropout(config.transformer["dropout_rate"])
 
