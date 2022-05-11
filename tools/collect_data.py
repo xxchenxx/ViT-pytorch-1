@@ -7,7 +7,7 @@ from pdb import set_trace
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Experiment summary parser')
-    parser.add_argument('--save_dir', default='/mnt/models/Ziyu_model/MoE_CL/checkpoints_tune', type=str)
+    parser.add_argument('--save_dir', default='/mnt/models/Ziyu_model/M2M_ViT/checkpoints', type=str)
     parser.add_argument('--exp_format', type=str)
     return parser.parse_args()
 
