@@ -20,7 +20,7 @@ def read_num(saveDir, exp):
         lines = file.read().splitlines()
     bestAcc = -1
     for line in lines[-20:]:
-        # set_trace()
+        set_trace()
         groups = re.match("^Best Accuracy: *([0-9]+\.[0-9]+)%$", line)
         if groups:
             bestAcc = float(groups[1])
