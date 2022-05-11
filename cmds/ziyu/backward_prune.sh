@@ -134,7 +134,7 @@ n_gpu=1
 
 backPruneRatio=0.8
 
-for lr in 0.03 0.01 0.003
+for lr in 0.01
 do
 CUDA_VISIBLE_DEVICES=${devices} python3 -m torch.distributed.launch --nproc_per_node=${n_gpu} --master_port ${port}  \
 train.py --name cifar10-lr${lr}-B128-pruneAllR${backPruneRatio}wLN --learning_rate ${lr} --num_workers 2 --output_dir ${save_dir} \
@@ -157,7 +157,7 @@ n_gpu=1
 
 backPruneRatio=0.8
 
-for lr in 0.03 0.01 0.003
+for lr in 0.01
 do
 CUDA_VISIBLE_DEVICES=${devices} python3 -m torch.distributed.launch --nproc_per_node=${n_gpu} --master_port ${port}  \
 train.py --name cifar100-lr${lr}-B128-pruneAllR${backPruneRatio}wLN --learning_rate ${lr} --num_workers 2 --output_dir ${save_dir} \
