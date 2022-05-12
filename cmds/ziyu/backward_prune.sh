@@ -122,17 +122,17 @@ train.py --name cifar100-lr${lr}-pruneAllR${backPruneRatio}wLN-quantize --learni
 --train_batch_size 8 --eval_batch_size 8
 
 
-###################### cifar10 B128 mesa ######################
+###################### cifar10 B128 backRazor ######################
 save_dir="/mnt/models/Ziyu_model/M2M_ViT"
 #save_dir="."
 
 #devices="8,9,10,11"
 #devices="12,13,14,15"
-devices="15"
+devices="2"
 port=7279
 n_gpu=1
 
-backPruneRatio=0.8
+backPruneRatio=0.9
 
 for lr in 0.01
 do
@@ -145,7 +145,7 @@ train.py --name cifar10-lr${lr}-B128-pruneAllR${backPruneRatio}wLN --learning_ra
 done
 
 
-###################### cifar100 B128 mesa ######################
+###################### cifar100 B128 backRazor ######################
 save_dir="/mnt/models/Ziyu_model/M2M_ViT"
 #save_dir="."
 
@@ -168,7 +168,7 @@ train.py --name cifar100-lr${lr}-B128-pruneAllR${backPruneRatio}wLN --learning_r
 done
 
 
-###################### pet37 B128 mesa ######################
+###################### pet37 B128 backRazor ######################
 save_dir="/mnt/models/Ziyu_model/M2M_ViT"
 #save_dir="."
 

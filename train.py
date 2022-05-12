@@ -157,7 +157,7 @@ def train(args, model, train_loader, val_loader, test_loader, masking, log, writ
         model.train()
 
     epoch = 0
-    while False:
+    while True:
         log.info("set epochs: {}".format(epoch))
         train_loader.sampler.set_epoch(epoch)
         epoch += 1
