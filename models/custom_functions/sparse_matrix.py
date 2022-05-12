@@ -14,6 +14,11 @@ def sparsify(tensor, mask, with_batch_size=False):
     else:
         sparse = sparse.unsqueeze(0)
 
+    # add bits to make it divisible by 8
+    if mask.shape[0] % 8 != 0:
+        add_bits = 8 - (mask.shape[0] % 8)
+        mask = torch.cat([mask, torch.zeros(add_bits, dtype=mask.dtype, device=mask.device)], dim=0)
+
     mask = packbit.packbits_padded(mask)
 
     # idle value
@@ -30,10 +35,10 @@ def unsparsify(shape, mask, sparse, with_batch_size=False):
     else:
         sparse = sparse.squeeze(0)
 
-    dense = torch.zeros(mask.shape, device=sparse.device, dtype=sparse.dtype)
-    dense[mask] = sparse
-
     shape = torch.Size(shape)
+    dense = torch.zeros(shape.numel(), device=sparse.device, dtype=sparse.dtype)
+    dense[mask[:shape.numel()]] = sparse
+
     return dense.reshape(shape)
 
     # idle
@@ -42,7 +47,7 @@ def unsparsify(shape, mask, sparse, with_batch_size=False):
 
 if __name__ == "__main__":
     with torch.no_grad():
-        attn = torch.rand(64, 12, 196, 196)
+        attn = torch.rand(1, 12, 195, 195)
         # attn = torch.rand(1, 1, 6, 6)
         mask = attn > 0.5
         attn_sparse = mask * attn
