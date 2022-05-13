@@ -4,7 +4,7 @@ import shutil
 import tarfile
 
 
-dataset_path = '/mnt/models/Ziyu/stanford_car'
+dataset_path = '../data/stanford_car'
 dataset_path = os.path.expanduser(dataset_path)
 
 if not os.path.exists(dataset_path):

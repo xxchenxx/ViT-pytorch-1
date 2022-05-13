@@ -5,7 +5,7 @@ from scipy.io import loadmat
 import shutil
 
 
-dataset_path = '/mnt/models/Ziyu/flowers102'
+dataset_path = '../data/flowers102'
 dataset_path = os.path.expanduser(dataset_path)
 
 
