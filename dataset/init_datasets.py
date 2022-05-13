@@ -85,6 +85,18 @@ def init_datasets(args, transform_train, transform_test):
         val_datasets = Custom_Dataset(root, txt_val, transform=transform_test)
         test_datasets = Custom_Dataset(root, txt_test, transform=transform_test)
 
+    elif args.dataset == 'flowers102':
+        root, txt_train, txt_val, txt_test = get_flowers102_data_split(args.data, args.customSplit)
+        train_datasets = Custom_Dataset(root, txt_train, transform=transform_train)
+        val_datasets = Custom_Dataset(root, txt_val, transform=transform_test)
+        test_datasets = Custom_Dataset(root, txt_test, transform=transform_test)
+
+    elif args.dataset == 'Caltech101':
+        root, txt_train, txt_val, txt_test = get_stanford_car_data_split(args.data, args.customSplit)
+        train_datasets = Custom_Dataset(root, txt_train, transform=transform_train)
+        val_datasets = Custom_Dataset(root, txt_val, transform=transform_test)
+        test_datasets = Custom_Dataset(root, txt_test, transform=transform_test)
+
     else:
         raise ValueError("Dataset of {} is not found".format(args.dataset))
 
@@ -559,6 +571,66 @@ def get_Caltech101_data_split(root, customSplit, ssl=False):
     if ssl:
         assert customSplit == ''
         train_idx = "split/Caltech101/Caltech101_trainval.txt"
+        return root, train_idx, None, None
+
+    return root, txt_train, txt_val, txt_test
+
+
+def get_stanford_car_path(root):
+    if os.path.isdir(root):
+        root = root
+    else:
+        if os.path.isdir('../data/stanford_car'):
+            root = '../data/stanford_car'
+        else:
+            assert False
+
+    return root
+
+
+def get_stanford_car_data_split(root, customSplit, ssl=False):
+    root = get_stanford_car_path(root)
+
+    txt_train = "split/stanford_car/train.txt"
+    txt_val = "split/stanford_car/val.txt"
+    txt_test = "split/stanford_car/test.txt"
+
+    if customSplit != '':
+        txt_train = "split/stanford_car/{}.txt".format(customSplit)
+
+    if ssl:
+        assert customSplit == ''
+        train_idx = "split/stanford_car/trainval.txt"
+        return root, train_idx, None, None
+
+    return root, txt_train, txt_val, txt_test
+
+
+def get_flowers102_path(root):
+    if os.path.isdir(root):
+        root = root
+    else:
+        if os.path.isdir('../data/flowers102'):
+            root = '../data/flowers102'
+        else:
+            assert False
+
+    return root
+
+
+def get_flowers102_data_split(root, customSplit, ssl=False):
+    root = get_flowers102_path(root)
+
+    txt_train = "split/flowers/train.txt"
+    txt_val = "split/flowers/val.txt"
+    txt_test = "split/flowers/test.txt"
+
+    if customSplit != '':
+        txt_train = "split/flowers/{}.txt".format(customSplit)
+
+    if ssl:
+        assert customSplit == ''
+        train_idx = "split/flowers/trainval.txt"
         return root, train_idx, None, None
 
     return root, txt_train, txt_val, txt_test

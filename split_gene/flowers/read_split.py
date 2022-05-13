@@ -16,7 +16,7 @@ def read_flower(root="/home/grads/j/jiangziyu/dataset/flowers102", subs=["train"
     for d in dirs:
       images = os.listdir(join(root, sub, d))
       for image in images:
-        lines.append("{} {}\n".format(join(d, image), dir2class[d]))
+        lines.append("{} {}\n".format(join(sub, d, image), dir2class[d]))
     lines_all.append(lines)
 
   return lines_all
