@@ -5,7 +5,7 @@ from torch.nn import functional as F
 from pdb import set_trace
 
 import sys
-sys.path.append("../utils")
+sys.path.append(".")
 
 from models.modeling import VisionTransformer, CONFIGS
 
@@ -74,7 +74,7 @@ def testAllGradDif():
 def testAllGradDifPruned():
     config = CONFIGS["ViT-B_16"]
 
-    masker = Masker(prune_ratio=0.5)
+    masker = Masker(prune_ratio=0.0)
     config = CONFIGS["ViT-B_16"]
     config.transformer.dropout_rate = 0
     model_new_prune = VisionTransformer(config, 224, zero_head=True, num_classes=100,

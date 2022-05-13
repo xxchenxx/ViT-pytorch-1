@@ -11,10 +11,13 @@ from .sparse_matrix import sparsify, unsparsify
 
 class gelu(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, x, mask, quantize=False, clip_val=None, level=256, iteration=None, ema_decay=None, quant_groups=None, shift=None):
+    def forward(ctx, x, mask, quantize=False, half=False, clip_val=None, level=256, iteration=None, ema_decay=None, quant_groups=None, shift=None):
         shape_x, mask_x, sparse_x = sparsify(x, mask)
+        if half:
+            sparse_x = sparse_x.half()
 
         if quantize:
+            assert not half
             custom_quant.Quant.forward(ctx, sparse_x, clip_val, level, iteration, ema_decay, quant_groups, shift)
             ctx.save_for_backward(shape_x, mask_x)
         else:
@@ -33,7 +36,28 @@ class gelu(torch.autograd.Function):
         else:
             shape_x, mask_x, sparse_x = tensors
 
+        sparse_x = sparse_x.float()
         x = unsparsify(shape_x, mask_x, sparse_x)
+        if x.is_cuda:
+            grad_input = native.gelu_backward_cuda(grad_output, x)
+        else:
+            grad_input = native.gelu_backward_cpu(grad_output, x)
+
+        return grad_input, None, None, None, None, None, None, None, None, None
+
+
+class geluMaskFree(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, x):
+        ctx.save_for_backward(x.half())
+        y = F.gelu(x)
+        return y
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        x, = ctx.saved_tensors
+        x = x.float()
+
         if x.is_cuda:
             grad_input = native.gelu_backward_cuda(grad_output, x)
         else:
@@ -43,10 +67,11 @@ class gelu(torch.autograd.Function):
 
 
 class GELUSparse(nn.GELU, custom_quant.Quant):
-    def __init__(self, args=None, logger=None, quant_groups=1, masker=None, quantize=False):
+    def __init__(self, args=None, logger=None, quant_groups=1, masker=None, quantize=False, half=False):
         super(GELUSparse, self).__init__()
         self.masker = masker
         self.quantize = quantize
+        self.half = half
         custom_quant.Quant.__init__(self, args=args, logger=logger, quant_groups=quant_groups)
         self.tag = 'gelu'
 
@@ -56,8 +81,10 @@ class GELUSparse(nn.GELU, custom_quant.Quant):
     def forward(self, x):
         if self.masker is not None and self.training:
             mask = self.masker(x)
-            y = gelu.apply(x, mask, self.quantize, self.clip_val, self.level,
+            y = gelu.apply(x, mask, self.quantize, self.half, self.clip_val, self.level,
                            self.iteration, self.ema_decay, self.quant_groups, self.shift)
+        elif self.half and self.training:
+            y = geluMaskFree.apply(x)
         else:
             y = F.gelu(x)
         return y

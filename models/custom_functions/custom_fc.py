@@ -13,9 +13,14 @@ from pdb import set_trace
 
 class linear(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, x, weight, bias=None, mask=None, quantize=True, clip_val=None, level=256, iteration=None, ema_decay=None, quant_groups=None, shift=None):
+    def forward(ctx, x, weight, bias=None, mask=None, quantize=True, half=False, clip_val=None, level=256, iteration=None, ema_decay=None, quant_groups=None, shift=None):
         shape_x, mask_x, sparse_x = sparsify(x, mask, with_batch_size=False)
+
+        if half:
+            sparse_x = sparse_x.half()
+
         if quantize:
+            assert not half
             custom_quant.Quant.forward(ctx, sparse_x, clip_val, level, iteration, ema_decay, quant_groups, shift)
             ctx.save_for_backward(weight, bias, shape_x, mask_x)
         else:
@@ -35,6 +40,7 @@ class linear(torch.autograd.Function):
             weight, bias, shape_x, mask_x = tensors
             sparse_x = custom_quant.Quant.restore(ctx)
 
+        sparse_x = sparse_x.float()
         input = unsparsify(shape_x, mask_x, sparse_x, with_batch_size=False)
 
         if ctx.needs_input_grad[0]:
@@ -46,15 +52,16 @@ class linear(torch.autograd.Function):
         if bias is not None and ctx.needs_input_grad[2]:
             grad_bias = grad_output.sum(0)
 
-        return grad_input, grad_weight, grad_bias, None, None, None, None, None, None, None, None
+        return grad_input, grad_weight, grad_bias, None, None, None, None, None, None, None, None, None
 
 
 class LinearSparse(nn.Linear, custom_quant.Quant):
-    def __init__(self, in_features, out_features, bias=True, args=None, logger=None, quant_groups=1, masker=None, quantize=True):
+    def __init__(self, in_features, out_features, bias=True, args=None, logger=None, quant_groups=1, masker=None, quantize=True, half=False):
         super(LinearSparse, self).__init__(in_features, out_features, bias=bias)
         custom_quant.Quant.__init__(self, args=args, logger=logger, quant_groups=quant_groups)
         self.masker = masker
         self.quantize = quantize
+        self.half = half
         self.tag = 'fc'
 
     def __repr__(self):
@@ -65,7 +72,7 @@ class LinearSparse(nn.Linear, custom_quant.Quant):
         if self.masker is not None and self.training:
             mask = self.masker(x)
             # print("mask sum is {}".format((~mask).sum()))
-            y = linear.apply(x, self.weight, self.bias, mask, self.quantize, self.clip_val, self.level,
+            y = linear.apply(x, self.weight, self.bias, mask, self.quantize, self.half, self.clip_val, self.level,
                              self.iteration, self.ema_decay, self.quant_groups, self.shift)
         else:
             y = F.linear(x, self.weight, self.bias)

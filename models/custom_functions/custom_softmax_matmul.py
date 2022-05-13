@@ -13,7 +13,7 @@ from .sparse_matrix import sparsify, unsparsify
 # design for Softmax(A)v
 class softmax_matmul(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, input1, input2, masker, quantize, dim,
+    def forward(ctx, input1, input2, masker, quantize, half, dim,
                 clip_val1=None, level1=256, iteration1=None, ema_decay1=None, quant_groups1=None, shift1=None,
                 clip_val2=None, level2=256, iteration2=None, ema_decay2=None, quant_groups2=None, shift2=None):
 
@@ -26,7 +26,12 @@ class softmax_matmul(torch.autograd.Function):
         shape_x_1, mask_x_1, sparse_x_1 = sparsify(input1_sm, mask1)
         shape_x_2, mask_x_2, sparse_x_2 = sparsify(input2, mask2)
 
+        if half:
+            sparse_x_1 = sparse_x_1.half()
+            sparse_x_2 = sparse_x_2.half()
+
         if quantize:
+            assert not half
             custom_quant.Quant.forward(ctx, sparse_x_1, clip_val1, level1, iteration1, ema_decay1, quant_groups1, shift1, '_1')
             custom_quant.Quant.forward(ctx, sparse_x_2, clip_val2, level2, iteration2, ema_decay2, quant_groups2, shift2, '_2')
 
@@ -50,6 +55,9 @@ class softmax_matmul(torch.autograd.Function):
         else:
             shape_x_1, shape_x_2, mask_x_1, mask_x_2, sparse_x_1, sparse_x_2 = tensors
 
+        sparse_x_1 = sparse_x_1.float()
+        sparse_x_2 = sparse_x_2.float()
+
         input1_sm = unsparsify(shape_x_1, mask_x_1, sparse_x_1)
         input2 = unsparsify(shape_x_2, mask_x_2, sparse_x_2)
 
@@ -63,15 +71,16 @@ class softmax_matmul(torch.autograd.Function):
         else:
             grad_input1 = native.softmax_backward_cpu(grad_input1, input1_sm, ctx.dim, input1_sm)
 
-        return grad_input1, grad_input2, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None
+        return grad_input1, grad_input2, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None
 
 
 class SoftmaxMatMulSparse(nn.Module):
-    def __init__(self, args=None, logger=None, quant_groups=1, masker=None, quantize=False, dim=-1):
+    def __init__(self, args=None, logger=None, quant_groups=1, masker=None, quantize=False, half=False, dim=-1):
         super(SoftmaxMatMulSparse, self).__init__()
         self.quant1 = custom_quant.quantization(tag='matmul-1', quant_groups=quant_groups)
         self.quant2 = custom_quant.quantization(tag='matmul-2', quant_groups=quant_groups)
         self.quantize = quantize
+        self.half = half
         self.masker = masker
         self.dim = dim
         self.tag = 'matmul'
@@ -82,7 +91,7 @@ class SoftmaxMatMulSparse(nn.Module):
 
     def forward(self, x1, x2):
         if self.masker is not None or self.training:
-            y = softmax_matmul.apply(x1, x2, self.masker, self.quantize, self.dim,
+            y = softmax_matmul.apply(x1, x2, self.masker, self.quantize, self.half, self.dim,
                                      self.quant1.clip_val, self.quant1.level, self.quant1.iteration, self.quant1.ema_decay, self.quant1.quant_groups, self.quant1.shift,
                                      self.quant2.clip_val, self.quant2.level, self.quant2.iteration, self.quant2.ema_decay, self.quant2.quant_groups, self.quant2.shift)
         else:

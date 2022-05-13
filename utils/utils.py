@@ -59,7 +59,7 @@ def setup(args, log, num_classes):
             model = VisionTransformer(config, args.img_size, zero_head=True, num_classes=num_classes,
                                       prune_mode=args.prune, prune_after_softmax=args.prune_after_softmax,
                                       attn_store_prune=args.attn_store_prune,
-                                      masker=masker, quantize=args.quantize,
+                                      masker=masker, quantize=args.quantize, half=args.backrazor_half,
                                       new_backrazor=args.new_backrazor, new_backrazor_item=backrazor_items)
 
         model.load_from(np.load(args.pretrained_dir))

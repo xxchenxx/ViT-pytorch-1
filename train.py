@@ -322,6 +322,7 @@ def main():
     parser.add_argument('--backrazor_with_layernorm', action="store_true", help="if employing the layernorm")
     parser.add_argument('--backrazor_with_gelu', action="store_true", help="if employing gelu")
     parser.add_argument('--quantize', action="store_true", help="while pruning, also do the quantization")
+    parser.add_argument('--backrazor_half', action="store_true", help="use half ")
 
     # mesa
     parser.add_argument('--mesa', action="store_true", help="employ mesa")

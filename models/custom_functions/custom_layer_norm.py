@@ -11,13 +11,17 @@ from .sparse_matrix import sparsify, unsparsify
 
 class layer_norm(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, x, normalized_shape, weight, bias, mask, quantize, eps, clip_val=None, level=256, iteration=None, ema_decay=None, quant_groups=None, shift=None):
+    def forward(ctx, x, normalized_shape, weight, bias, mask, quantize, half, eps, clip_val=None, level=256, iteration=None, ema_decay=None, quant_groups=None, shift=None):
         if x.dtype != weight.data.dtype:
             x = x.to(dtype=weight.data.dtype)
 
         shape_x, mask_x, sparse_x = sparsify(x, mask)
 
+        if half:
+            sparse_x = sparse_x.half()
+
         if quantize:
+            assert not half
             custom_quant.Quant.forward(ctx, sparse_x, clip_val, level, iteration, ema_decay, quant_groups, shift)
             ctx.save_for_backward(shape_x, mask_x)
         else:
@@ -61,6 +65,7 @@ class layer_norm(torch.autograd.Function):
         else:
             shape_x, mask_x, sparse_x = tensors
 
+        sparse_x = sparse_x.float()
         x = unsparsify(shape_x, mask_x, sparse_x, with_batch_size=True)
 
         grad_input = grad_weight = grad_bias = None
@@ -84,17 +89,18 @@ class layer_norm(torch.autograd.Function):
                 grad_input, grad_weight, grad_bias = native.layer_norm_backward_cpu(grad_output, x, mean, rstd, weight, M, N, output_mask)
         ctx.layer_norm_parameters = None
 
-        return grad_input, None, grad_weight, grad_bias, None, None, None, None, None, None, None, None, None
+        return grad_input, None, grad_weight, grad_bias, None, None, None, None, None, None, None, None, None, None, None
 
 
 class LayerNormSparse(nn.LayerNorm, custom_quant.Quant):
     def __init__(self, normalized_shape, eps=1e-05, elementwise_affine=True, args=None, logger=None, quant_groups=1,
-                 masker=None, quantize=False, backrazor_bits=32):
+                 masker=None, quantize=False, half=False, backrazor_bits=32):
         super(LayerNormSparse, self).__init__(normalized_shape, eps=eps, elementwise_affine=elementwise_affine)
         custom_quant.Quant.__init__(self, args=args, logger=logger, quant_groups=quant_groups)
         self.tag = 'layernorm'
         self.masker = masker
         self.quantize = quantize
+        self.half = half
 
     def __repr__(self):
         return self.__str__()
@@ -102,7 +108,7 @@ class LayerNormSparse(nn.LayerNorm, custom_quant.Quant):
     def forward(self, x):
         if self.masker is not None and self.training:
             mask = self.masker(x)
-            y = layer_norm.apply(x, self.normalized_shape, self.weight, self.bias, mask, self.quantize, self.eps,
+            y = layer_norm.apply(x, self.normalized_shape, self.weight, self.bias, mask, self.quantize, self.half, self.eps,
                                  self.clip_val, self.level,
                                  self.iteration, self.ema_decay, self.quant_groups, self.shift)
         else:

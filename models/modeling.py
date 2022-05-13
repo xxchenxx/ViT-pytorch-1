@@ -311,10 +311,11 @@ class Encoder(nn.Module):
 
 
 class Transformer(nn.Module):
-    def __init__(self, config, img_size, vis, prune_mode=False, prune_after_softmax=False, quantize=False,**kwargs):
+    def __init__(self, config, img_size, vis, prune_mode=False, prune_after_softmax=False, quantize=False, half=False, **kwargs):
         super(Transformer, self).__init__()
         self.embeddings = Embeddings(config, img_size=img_size)
         config.quantize = quantize
+        config.half = half
         self.encoder = Encoder(config, vis, prune_mode, prune_after_softmax=prune_after_softmax,
                                n_tokens=self.embeddings.position_embeddings.shape[1], **kwargs)
 

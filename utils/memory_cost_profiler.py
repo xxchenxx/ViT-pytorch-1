@@ -72,13 +72,23 @@ def count_activation_size(net, input_size=(1, 3, 224, 224), require_backward=Tru
 
 		# print("count_linear")
 		if isinstance(m, LinearActivationPrune):
-			m.grad_activations *= x[2].float().mean().cpu()
+			if m.half:
+				ratio = 0.5
+			else:
+				ratio = 1
+
+			m.grad_activations *= x[2].float().mean().cpu() * ratio
 			m.grad_activations += x[2].numel() * 1/8
 
 		if isinstance(m, LinearSparse) and m.masker is not None:
+			if m.half:
+				ratio = 0.5
+			else:
+				ratio = 1
+
 			mask = m.masker(x[0])
 			# print("mlp density is {}".format(mask.float().mean().cpu()))
-			m.grad_activations *= mask.float().mean().cpu()
+			m.grad_activations *= mask.float().mean().cpu() * ratio
 			m.grad_activations += (mask.numel() / 8)
 
 		# temporary memory footprint required by inference
@@ -120,11 +130,6 @@ def count_activation_size(net, input_size=(1, 3, 224, 224), require_backward=Tru
 			m.grad_activations = torch.Tensor([x[0].numel() * act_byte])  # bytes
 		else:
 			m.grad_activations = torch.Tensor([0])
-
-		if isinstance(m, GELUSparse) and m.masker is not None:
-			mask = m.masker(x[0])
-			m.grad_activations *= mask.float().mean().cpu()
-			m.grad_activations += (mask.numel() / 8)
 
 		# temporary memory footprint required by inference
 		m.tmp_activations = torch.Tensor([x[0].numel() * act_byte])  # bytes
@@ -199,15 +204,22 @@ def count_activation_size(net, input_size=(1, 3, 224, 224), require_backward=Tru
 					if isinstance(_module, AttentionStoreActivationPrune) or isinstance(_module, AttentionActPrune):
 						if isinstance(_module, AttentionStoreActivationPrune):
 							attn_prune_ratio = _module.prune_ratio_act_store
+							ratio = 1
 						else:
 							attn_prune_ratio = _module.masker.prune_ratio
-						# print("attn_prune_ratio is {}".format(attn_prune_ratio))
-						# attn matrix
-						memory_info_dict['grad_activation_size'] += _module.num_attention_heads * n_tokens * n_tokens * (act_byte) * (1 - attn_prune_ratio)
+							# print("attn_prune_ratio is {}".format(attn_prune_ratio))
+							# attn matrix
+							if _module.half:
+								ratio = 0.5
+							else:
+								ratio = 1
+
+						memory_info_dict['grad_activation_size'] += _module.num_attention_heads * n_tokens * n_tokens * (act_byte) * (1 - attn_prune_ratio) * ratio
 						memory_info_dict['grad_activation_size'] += _module.num_attention_heads * n_tokens * n_tokens * 1/8
 						# key, query, value
-						memory_info_dict['grad_activation_size'] += 3 * _module.all_head_size * n_tokens * (act_byte) * (1 - attn_prune_ratio)
+						memory_info_dict['grad_activation_size'] += 3 * _module.all_head_size * n_tokens * (act_byte) * (1 - attn_prune_ratio) * ratio
 						memory_info_dict['grad_activation_size'] += 3 * _module.all_head_size * n_tokens * 1/8
+
 					else:
 						memory_info_dict['grad_activation_size'] += _module.num_attention_heads * n_tokens * n_tokens * act_byte
 						memory_info_dict['grad_activation_size'] += 3 * _module.all_head_size * n_tokens * act_byte
@@ -234,7 +246,20 @@ def count_activation_size(net, input_size=(1, 3, 224, 224), require_backward=Tru
 					# print("_x.shape is {}".format(_x.shape))
 					n_tokens = _x.shape[1]
 					# set_trace()
-					memory_info_dict['grad_activation_size'] += _module.fc1.out_features * n_tokens * act_byte
+					if isinstance(_module, MlpActPrune):
+						if isinstance(_module.act_fn, GELUSparse):
+							if _module.act_fn.masker is not None:
+								ratio = _module.act_fn.masker.prune_ratio
+								memory_info_dict['grad_activation_size'] += _module.fc1.out_features * n_tokens / 8
+							else:
+								ratio = 1
+
+							if _module.act_fn.half:
+								ratio *= 0.5
+
+						memory_info_dict['grad_activation_size'] += _module.fc1.out_features * n_tokens * act_byte * ratio
+					else:
+						memory_info_dict['grad_activation_size'] += _module.fc1.out_features * n_tokens * act_byte
 
 					if head_only:
 						memory_info_dict['grad_activation_size'] *= 0

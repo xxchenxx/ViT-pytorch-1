@@ -129,7 +129,7 @@ save_dir="/mnt/models/Ziyu_model/M2M_ViT"
 #devices="8,9,10,11"
 #devices="12,13,14,15"
 devices="2"
-port=7279
+port=7281
 n_gpu=1
 
 backPruneRatio=0.9
@@ -145,14 +145,14 @@ train.py --name cifar10-lr${lr}-B128-pruneAllR${backPruneRatio}wLN --learning_ra
 done
 
 
-###################### cifar100 B128 backRazor ######################
+###################### cifar10 B128 backRazor quantize ######################
 save_dir="/mnt/models/Ziyu_model/M2M_ViT"
 #save_dir="."
 
 #devices="8,9,10,11"
 #devices="12,13,14,15"
-devices="15"
-port=7295
+devices="4"
+port=7282
 n_gpu=1
 
 backPruneRatio=0.8
@@ -160,10 +160,55 @@ backPruneRatio=0.8
 for lr in 0.01
 do
 CUDA_VISIBLE_DEVICES=${devices} python3 -m torch.distributed.launch --nproc_per_node=${n_gpu} --master_port ${port}  \
-train.py --name cifar100-lr${lr}-B128-pruneAllR${backPruneRatio}wLN --learning_rate ${lr} --num_workers 2 --output_dir ${save_dir} \
+train.py --name cifar10-lr${lr}-B128-pruneAllR${backPruneRatio}wLN-quantize --learning_rate ${lr} --num_workers 2 --output_dir ${save_dir} \
+--dataset cifar10 --model_type ViT-B_16 --pretrained_dir ${save_dir}/pretrain/ViT-B_16.npz \
+--new_backrazor --back_prune_ratio ${backPruneRatio} --backrazor_with_layernorm --quantize \
+--train_batch_size 128 --eval_batch_size 128 \
+--num_steps 20000 --eval_every 1000
+done
+
+
+###################### cifar100 B128 backRazor + half ######################
+#save_dir="/mnt/models/Ziyu_model/M2M_ViT"
+save_dir="."
+
+#devices="8,9,10,11"
+#devices="12,13,14,15"
+devices="0,1"
+port=7297
+n_gpu=2
+
+backPruneRatio=0.8
+
+for lr in 0.01
+do
+CUDA_VISIBLE_DEVICES=${devices} python3 -m torch.distributed.launch --nproc_per_node=${n_gpu} --master_port ${port}  \
+train.py --name cifar100-lr${lr}-B128-pruneAllR${backPruneRatio}wLN-half --learning_rate ${lr} --num_workers 2 --output_dir ${save_dir} \
 --dataset cifar100 --model_type ViT-B_16 --pretrained_dir ${save_dir}/pretrain/ViT-B_16.npz \
 --new_backrazor --back_prune_ratio ${backPruneRatio} --backrazor_with_layernorm \
---train_batch_size 128 --eval_batch_size 128 \
+--train_batch_size 128 --eval_batch_size 128 --backrazor_half --memory_cost_profile \
+--num_steps 20000 --eval_every 1000
+done
+
+###################### cifar100 B128 backRazor quantize ######################
+save_dir="/mnt/models/Ziyu_model/M2M_ViT"
+#save_dir="."
+
+#devices="8,9,10,11"
+#devices="12,13,14,15"
+devices="5"
+port=7296
+n_gpu=1
+
+backPruneRatio=0.8
+
+for lr in 0.01
+do
+CUDA_VISIBLE_DEVICES=${devices} python3 -m torch.distributed.launch --nproc_per_node=${n_gpu} --master_port ${port}  \
+train.py --name cifar100-lr${lr}-B128-pruneAllR${backPruneRatio}wLN-quantize --learning_rate ${lr} --num_workers 2 --output_dir ${save_dir} \
+--dataset cifar100 --model_type ViT-B_16 --pretrained_dir ${save_dir}/pretrain/ViT-B_16.npz \
+--new_backrazor --back_prune_ratio ${backPruneRatio} --backrazor_with_layernorm \
+--train_batch_size 128 --eval_batch_size 128 --quantize \
 --num_steps 20000 --eval_every 1000
 done
 
@@ -174,13 +219,13 @@ save_dir="/mnt/models/Ziyu_model/M2M_ViT"
 
 #devices="8,9,10,11"
 #devices="12,13,14,15"
-devices="4"
-port=5095
+devices="3"
+port=5995
 n_gpu=1
 
 backPruneRatio=0.8
 
-for lr in 1e-3
+for lr in 3e-3
 do
 CUDA_VISIBLE_DEVICES=${devices} python3 -m torch.distributed.launch --nproc_per_node=${n_gpu} --master_port ${port}  \
 train.py --name Pet37-lr${lr}-B128-coTuneTrans-pruneAllR${backPruneRatio}wLN --learning_rate ${lr} --num_workers 2 --output_dir ${save_dir} \

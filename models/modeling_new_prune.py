@@ -28,8 +28,8 @@ class MlpActPrune(nn.Module):
 
         if "fc" in new_backrazor_item:
             print("employ new sparse mlp for MLP block")
-            self.fc1 = LinearSparse(config.hidden_size, config.transformer["mlp_dim"], quantize=config.quantize, masker=masker)
-            self.fc2 = LinearSparse(config.transformer["mlp_dim"], config.hidden_size, quantize=config.quantize, masker=masker)
+            self.fc1 = LinearSparse(config.hidden_size, config.transformer["mlp_dim"], quantize=config.quantize, half=config.half, masker=masker)
+            self.fc2 = LinearSparse(config.transformer["mlp_dim"], config.hidden_size, quantize=config.quantize, half=config.half, masker=masker)
         else:
             self.fc1 = Linear(config.hidden_size, config.transformer["mlp_dim"])
             self.fc2 = Linear(config.transformer["mlp_dim"], config.hidden_size)
@@ -37,10 +37,11 @@ class MlpActPrune(nn.Module):
         self.num_attention_heads = config.transformer["num_heads"]
         if "gelu" in new_backrazor_item:
             print("employ new sparse GELU for MLP block")
-            self.act_fn = GELUSparse(quantize=config.quantize, masker=masker)
+            self.act_fn = GELUSparse(quantize=config.quantize, half=config.half, masker=masker)
         else:
-            self.act_fn = ms.GELU(quant_groups=self.num_attention_heads)
-            self.act_fn.enable = True
+            # self.act_fn = ms.GELU(quant_groups=self.num_attention_heads)
+            # self.act_fn.enable = True
+            self.act_fn = GELUSparse(quantize=config.quantize, masker=None, half=True)
 
         self.dropout = Dropout(config.transformer["dropout_rate"])
 
@@ -73,11 +74,11 @@ class AttentionActPrune(nn.Module):
 
         if "fc" in new_backrazor_item:
             print("employ new sparse fc for Attn block")
-            self.query = LinearSparse(config.hidden_size, self.all_head_size, quantize=config.quantize, masker=masker)
-            self.key = LinearSparse(config.hidden_size, self.all_head_size, quantize=config.quantize, masker=masker)
-            self.value = LinearSparse(config.hidden_size, self.all_head_size, quantize=config.quantize, masker=masker)
+            self.query = LinearSparse(config.hidden_size, self.all_head_size, quantize=config.quantize, half=config.half, masker=masker)
+            self.key = LinearSparse(config.hidden_size, self.all_head_size, quantize=config.quantize, half=config.half, masker=masker)
+            self.value = LinearSparse(config.hidden_size, self.all_head_size, quantize=config.quantize, half=config.half, masker=masker)
 
-            self.out = LinearSparse(config.hidden_size, config.hidden_size, quantize=config.quantize, masker=masker)
+            self.out = LinearSparse(config.hidden_size, config.hidden_size, quantize=config.quantize, half=config.half, masker=masker)
         else:
             self.query = nn.Linear(config.hidden_size, self.all_head_size)
             self.key = nn.Linear(config.hidden_size, self.all_head_size)
@@ -91,9 +92,9 @@ class AttentionActPrune(nn.Module):
 
         if "matmul" in new_backrazor_item:
             print("employ new sparse matmul for Attn block")
-            self.mm1 = MatMulSparse(quantize=config.quantize, masker=masker)
+            self.mm1 = MatMulSparse(quantize=config.quantize, half=config.half, masker=masker)
             # self.softmax_mm2 = SoftmaxMatMulSparse(quantize=config.quantize, masker=masker, dim=-1)
-            self.mm2 = MatMulSparse(quantize=config.quantize, masker=masker)
+            self.mm2 = MatMulSparse(quantize=config.quantize, half=config.half, masker=masker)
         else:
             self.mm1 = torch.matmul
             # self.softmax_mm2 = SoftmaxMatMulSparse(quantize=config.quantize, masker=masker, dim=-1)
@@ -101,7 +102,7 @@ class AttentionActPrune(nn.Module):
 
         if "softmax" in new_backrazor_item:
             print("employ new sparse softmax for Attn block")
-            self.softmax_mm2 = SoftmaxMatMulSparse(dim=-1, quantize=config.quantize, masker=masker)
+            self.softmax_mm2 = SoftmaxMatMulSparse(dim=-1, quantize=config.quantize, half=config.half, masker=masker)
             self.mm2 = None
         else:
             self.softmax = Softmax(dim=-1)

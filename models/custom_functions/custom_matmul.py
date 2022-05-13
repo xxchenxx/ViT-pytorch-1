@@ -12,14 +12,19 @@ from .sparse_matrix import sparsify, unsparsify
 
 class matmul(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, input1, input2, mask1, mask2, quantize,
+    def forward(ctx, input1, input2, mask1, mask2, quantize, half,
                 clip_val1=None, level1=256, iteration1=None, ema_decay1=None, quant_groups1=None, shift1=None,
                 clip_val2=None, level2=256, iteration2=None, ema_decay2=None, quant_groups2=None, shift2=None):
 
         shape_x_1, mask_x_1, sparse_x_1 = sparsify(input1, mask1)
         shape_x_2, mask_x_2, sparse_x_2 = sparsify(input2, mask2)
 
+        if half:
+            sparse_x_1 = sparse_x_1.half()
+            sparse_x_2 = sparse_x_2.half()
+
         if quantize:
+            assert not half
             custom_quant.Quant.forward(ctx, sparse_x_1, clip_val1, level1, iteration1, ema_decay1, quant_groups1, shift1, '_1')
             custom_quant.Quant.forward(ctx, sparse_x_2, clip_val2, level2, iteration2, ema_decay2, quant_groups2, shift2, '_2')
 
@@ -43,6 +48,9 @@ class matmul(torch.autograd.Function):
         else:
             shape_x_1, shape_x_2, mask_x_1, mask_x_2, sparse_x_1, sparse_x_2 = tensors
 
+        sparse_x_1 = sparse_x_1.float()
+        sparse_x_2 = sparse_x_2.float()
+
         input1 = unsparsify(shape_x_1, mask_x_1, sparse_x_1)
         input2 = unsparsify(shape_x_2, mask_x_2, sparse_x_2)
 
@@ -51,15 +59,16 @@ class matmul(torch.autograd.Function):
         if ctx.needs_input_grad[1]:
             grad_input2 = input1.transpose(-2, -1).to(dtype=grad_output.dtype).matmul(grad_output)
 
-        return grad_input1, grad_input2, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None
+        return grad_input1, grad_input2, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None
 
 
 class MatMulSparse(nn.Module):
-    def __init__(self, args=None, logger=None, quant_groups=1, masker=None, quantize=False):
+    def __init__(self, args=None, logger=None, quant_groups=1, masker=None, quantize=False, half=False):
         super(MatMulSparse, self).__init__()
         self.quant1 = custom_quant.quantization(tag='matmul-1', quant_groups=quant_groups)
         self.quant2 = custom_quant.quantization(tag='matmul-2', quant_groups=quant_groups)
         self.quantize = quantize
+        self.half = half
         self.masker = masker
         self.tag = 'matmul'
 
@@ -72,7 +81,7 @@ class MatMulSparse(nn.Module):
             mask1 = self.masker(x1)
             mask2 = self.masker(x2)
 
-            y = matmul.apply(x1, x2, mask1, mask2, self.quantize,
+            y = matmul.apply(x1, x2, mask1, mask2, self.quantize, self.half,
                              self.quant1.clip_val, self.quant1.level, self.quant1.iteration, self.quant1.ema_decay, self.quant1.quant_groups, self.quant1.shift,
                              self.quant2.clip_val, self.quant2.level, self.quant2.iteration, self.quant2.ema_decay, self.quant2.quant_groups, self.quant2.shift)
         else:
