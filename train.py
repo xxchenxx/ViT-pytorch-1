@@ -242,7 +242,7 @@ def main():
     parser = argparse.ArgumentParser()
     # Required parameters
     parser.add_argument("--name", required=True, help="Name of this run. Used for monitoring.")
-    parser.add_argument("--dataset", choices=["cifar10", "cifar100", "aircraft", "Pet37", "flower102", "stanford_car"],
+    parser.add_argument("--dataset", choices=["cifar10", "cifar100", "aircraft", "Pet37", "flowers102", "stanford_car"],
                         default="cifar10", help="Which downstream task.")
     parser.add_argument("--data", default="placeholder", help="Which downstream task.")
     parser.add_argument("--customSplit", default="", help="the downstream custom split.")

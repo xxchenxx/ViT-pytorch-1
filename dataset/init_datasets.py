@@ -91,7 +91,7 @@ def init_datasets(args, transform_train, transform_test):
         val_datasets = Custom_Dataset(root, txt_val, transform=transform_test)
         test_datasets = Custom_Dataset(root, txt_test, transform=transform_test)
 
-    elif args.dataset == 'Caltech101':
+    elif args.dataset == 'stanford_car':
         root, txt_train, txt_val, txt_test = get_stanford_car_data_split(args.data, args.customSplit)
         train_datasets = Custom_Dataset(root, txt_train, transform=transform_train)
         val_datasets = Custom_Dataset(root, txt_val, transform=transform_test)
