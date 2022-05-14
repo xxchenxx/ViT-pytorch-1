@@ -3,6 +3,7 @@ import torch.nn as nn
 from torchvision.models.utils import load_state_dict_from_url
 
 from models.custom_functions.custom_conv import SparseConv2d
+from models.custom_functions.custom_fc import LinearSparse
 
 __all__ = ['ResNet', 'resnet18', 'resnet34', 'resnet50', 'resnet101',
            'resnet152', 'resnext50_32x4d', 'resnext101_32x8d',
@@ -203,7 +204,10 @@ class ResNet(nn.Module):
         self.layer4 = self._make_layer(block, 512, layers[3], stride=2,
                                        dilate=replace_stride_with_dilation[2])
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
-        self.fc = nn.Linear(512 * block.expansion, num_classes)
+        if self.new_backrazor:
+            self.fc = LinearSparse(512 * block.expansion, num_classes, masker=masker)
+        else:
+            self.fc = nn.Linear(512 * block.expansion, num_classes)
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):

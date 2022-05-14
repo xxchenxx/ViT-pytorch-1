@@ -21,7 +21,7 @@ def get_loader(args):
         print("employ the transform of co-tuning")
         if args.img_size == 32:
             resize_size = 32
-            crop_size=32
+            crop_size = 32
         elif args.img_size == 224:
             resize_size = 256
             crop_size = 224
