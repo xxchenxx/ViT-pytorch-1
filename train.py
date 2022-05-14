@@ -336,6 +336,8 @@ def main():
                                                                           "doing other training augmentations")
     parser.add_argument('--cotuning_trans', action="store_true", help="Employ the trans of cotuning")
 
+    parser.add_argument('--train_from_scratch', action="store_true", help="if train from scratch")
+
     args = parser.parse_args()
 
     # Setup CUDA, GPU & distributed training

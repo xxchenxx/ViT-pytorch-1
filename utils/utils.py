@@ -62,11 +62,12 @@ def setup(args, log, num_classes):
                                       masker=masker, quantize=args.quantize, half=args.backrazor_half,
                                       new_backrazor=args.new_backrazor, new_backrazor_item=backrazor_items)
 
-        model.load_from(np.load(args.pretrained_dir))
+        if not args.train_from_scratch:
+            model.load_from(np.load(args.pretrained_dir))
         log.info("{}".format(config))
     else:
         masker = None if not args.new_backrazor else Masker(prune_ratio=args.back_prune_ratio)
-        model = resnet.__dict__[args.model_type](pretrained=True, num_classes=num_classes,
+        model = resnet.__dict__[args.model_type](pretrained=not args.train_from_scratch, num_classes=num_classes,
                                                 new_backrazor=args.new_backrazor, masker=masker)
 
         if args.new_backrazor:

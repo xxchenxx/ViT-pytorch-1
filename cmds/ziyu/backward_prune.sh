@@ -128,11 +128,11 @@ save_dir="/mnt/models/Ziyu_model/M2M_ViT"
 
 #devices="8,9,10,11"
 #devices="12,13,14,15"
-devices="4,5"
+devices="14"
 port=7282
-n_gpu=2
+n_gpu=1
 
-backPruneRatio=0.8
+backPruneRatio=0.95
 
 for lr in 0.03
 do
@@ -174,11 +174,11 @@ save_dir="/mnt/models/Ziyu_model/M2M_ViT"
 
 #devices="8,9,10,11"
 #devices="12,13,14,15"
-devices="0,1"
+devices="15"
 port=7297
-n_gpu=2
+n_gpu=1
 
-backPruneRatio=0.8
+backPruneRatio=0.95
 
 for lr in 0.01
 do
@@ -264,21 +264,54 @@ save_dir="/mnt/models/Ziyu_model/M2M_ViT"
 
 #devices="8,9,10,11"
 #devices="12,13,14,15"
-devices="12,13"
-port=5996
+devices="8,9"
+port=5926
 n_gpu=2
 
-backPruneRatio=0.8
+backPruneRatio=0.95
 
-for lr in 3e-3
+for lr in 1e-2
 do
 CUDA_VISIBLE_DEVICES=${devices} python3 -m torch.distributed.launch --nproc_per_node=${n_gpu} --master_port ${port}  \
-train.py --name Pet37-lr${lr}-B128-coTuneTrans-pruneAllR${backPruneRatio}wLN-half --learning_rate ${lr} --num_workers 2 --output_dir ${save_dir} \
+train.py --name Pet37-lr${lr}-B128-coTuneTrans-pruneAllR${backPruneRatio}wLN-half-2k --learning_rate ${lr} --num_workers 2 --output_dir ${save_dir} \
 --dataset Pet37 --model_type ViT-B_16 --pretrained_dir ${save_dir}/pretrain/ViT-B_16.npz \
 --new_backrazor --back_prune_ratio ${backPruneRatio} --backrazor_with_layernorm --backrazor_half \
 --train_batch_size 128 --eval_batch_size 128 --cotuning_trans \
 --num_steps 2000 --eval_every 1000
 done
+
+for lr in 3e-3 1e-2 3e-2
+do
+CUDA_VISIBLE_DEVICES=${devices} python3 -m torch.distributed.launch --nproc_per_node=${n_gpu} --master_port ${port}  \
+train.py --name Pet37-lr${lr}-B128-coTuneTrans-pruneAllR${backPruneRatio}wLN-half-4k --learning_rate ${lr} --num_workers 2 --output_dir ${save_dir} \
+--dataset Pet37 --model_type ViT-B_16 --pretrained_dir ${save_dir}/pretrain/ViT-B_16.npz \
+--new_backrazor --back_prune_ratio ${backPruneRatio} --backrazor_with_layernorm --backrazor_half \
+--train_batch_size 128 --eval_batch_size 128 --cotuning_trans \
+--num_steps 4000 --eval_every 1000
+done
+
+###################### pet37 B128 backRazor + quantize + 2k ######################
+save_dir="/mnt/models/Ziyu_model/M2M_ViT"
+#save_dir="."
+
+#devices="8,9,10,11"
+#devices="12,13,14,15"
+devices="10,11"
+port=5936
+n_gpu=2
+
+backPruneRatio=0.8
+
+for lr in 1e-2
+do
+CUDA_VISIBLE_DEVICES=${devices} python3 -m torch.distributed.launch --nproc_per_node=${n_gpu} --master_port ${port}  \
+train.py --name Pet37-lr${lr}-B128-coTuneTrans-pruneAllR${backPruneRatio}wLN-quantize-2k --learning_rate ${lr} --num_workers 2 --output_dir ${save_dir} \
+--dataset Pet37 --model_type ViT-B_16 --pretrained_dir ${save_dir}/pretrain/ViT-B_16.npz \
+--new_backrazor --back_prune_ratio ${backPruneRatio} --backrazor_with_layernorm --quantize \
+--train_batch_size 128 --eval_batch_size 128 --cotuning_trans \
+--num_steps 2000 --eval_every 1000
+done
+
 
 ##############################
 --train_batch_size 2 --eval_batch_size 2
