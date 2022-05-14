@@ -19,7 +19,16 @@ def get_loader(args):
 
     if args.cotuning_trans:
         print("employ the transform of co-tuning")
-        data_transforms = get_transforms(normalization)
+        if args.img_size == 32:
+            resize_size = 32
+            crop_size=32
+        elif args.img_size == 224:
+            resize_size = 256
+            crop_size = 224
+        else:
+            raise ValueError("unknow image size of {}".format(args.img_size))
+
+        data_transforms = get_transforms(normalization, resize_size, crop_size)
         transform_train, transform_test = data_transforms['train'], data_transforms['val']
     else:
         train_trans = [

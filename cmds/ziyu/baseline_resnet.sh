@@ -107,15 +107,33 @@ done
 # train from scratch
 save_dir="/mnt/models/Ziyu_model/M2M_ViT"
 
-devices="13"
-port=6239
+devices="11"
+port=6237
 n_gpu=1
 
-for lr in 0.1 # with layernorm
+for lr in 0.03 # with layernorm
 do
 CUDA_VISIBLE_DEVICES=${devices} python3 -m torch.distributed.launch --nproc_per_node=${n_gpu} --master_port ${port} \
 train.py --name resnet-scratch-cifar10-lr${lr}B256-Step20k-coTuneTrans --learning_rate ${lr} --num_workers 5 --output_dir ${save_dir} \
 --dataset cifar10 --model_type resnet50 \
---train_batch_size 256 --eval_batch_size 256 --num_steps 20000 \
+--train_batch_size 256 --eval_batch_size 256 --num_steps 20000 --weight_decay 1e-4 \
+--eval_every 200 --train_from_scratch --cotuning_trans --img_size 32
+done
+
+# train from scratch with backRazor
+save_dir="/mnt/models/Ziyu_model/M2M_ViT"
+
+devices="11"
+port=6237
+n_gpu=1
+backPruneRatio=0.9
+
+for lr in 0.1
+do
+CUDA_VISIBLE_DEVICES=${devices} python3 -m torch.distributed.launch --nproc_per_node=${n_gpu} --master_port ${port} \
+train.py --name resnet-scratch-cifar10-lr${lr}B256-Step20k-coTuneTrans-backRazorR${backPruneRatio} --learning_rate ${lr} --num_workers 5 --output_dir ${save_dir} \
+--dataset cifar10 --model_type resnet50 \
+--train_batch_size 256 --eval_batch_size 256 --num_steps 20000 --weight_decay 1e-4 \
+--new_backrazor --back_prune_ratio ${backPruneRatio} --backrazor_with_layernorm \
 --eval_every 200 --train_from_scratch --cotuning_trans --img_size 32
 done
