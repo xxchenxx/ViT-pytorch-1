@@ -48,15 +48,23 @@ class gelu(torch.autograd.Function):
 
 class geluMaskFree(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, x):
-        ctx.save_for_backward(x.half())
+    def forward(ctx, x, quantize=False, half=False, clip_val=None, level=256, iteration=None, ema_decay=None, quant_groups=None, shift=None):
+        if quantize:
+            custom_quant.Quant.forward(ctx, x, clip_val, level, iteration, ema_decay, quant_groups, shift)
+            ctx.save_for_backward(torch.BoolTensor([False,]))
+        else:
+            ctx.save_for_backward(x.half())
+
         y = F.gelu(x)
         return y
 
     @staticmethod
     def backward(ctx, grad_output):
         x, = ctx.saved_tensors
-        x = x.float()
+        if x.numel() == 1 and isinstance(x, torch.BoolTensor):
+            x = custom_quant.Quant.restore(ctx)
+        else:
+            x = x.float()
 
         if x.is_cuda:
             grad_input = native.gelu_backward_cuda(grad_output, x)
@@ -84,7 +92,8 @@ class GELUSparse(nn.GELU, custom_quant.Quant):
             y = gelu.apply(x, mask, self.quantize, self.half, self.clip_val, self.level,
                            self.iteration, self.ema_decay, self.quant_groups, self.shift)
         elif self.half and self.training:
-            y = geluMaskFree.apply(x)
+            y = geluMaskFree.apply(x, self.quantize, self.half, self.clip_val, self.level,
+                                   self.iteration, self.ema_decay, self.quant_groups, self.shift)
         else:
             y = F.gelu(x)
         return y

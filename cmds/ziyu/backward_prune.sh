@@ -174,11 +174,11 @@ save_dir="/mnt/models/Ziyu_model/M2M_ViT"
 
 #devices="8,9,10,11"
 #devices="12,13,14,15"
-devices="15"
-port=7297
+devices="8"
+port=4292
 n_gpu=1
 
-backPruneRatio=0.95
+backPruneRatio=0.8
 
 for lr in 0.01
 do
@@ -191,8 +191,8 @@ train.py --name cifar100-lr${lr}-B128-pruneAllR${backPruneRatio}wLN-half --learn
 done
 
 ###################### cifar100 B128 backRazor quantize ######################
-save_dir="/mnt/models/Ziyu_model/M2M_ViT"
-#save_dir="."
+#save_dir="/mnt/models/Ziyu_model/M2M_ViT"
+save_dir="."
 
 #devices="8,9,10,11"
 #devices="12,13,14,15"

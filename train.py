@@ -411,23 +411,6 @@ def main():
             else:
                 parameter.requires_grad = False
 
-    if args.memory_cost_profile:
-        # if args.mesa:
-        activation_bits = 32
-        # else:
-        #     activation_bits = 32
-
-        # memory_cost, {'param_size': param_size, 'act_size': activation_size}
-        memory_cost, memory_cost_dict = profile_memory_cost(model, input_size=(1, 3, 224, 224), require_backward=True,
-                                                            activation_bits=activation_bits, trainable_param_bits=32,
-                                                            head_only=args.fix_backbone,
-                                                            frozen_param_bits=8, batch_size=128)
-        MB = 1024 * 1024
-        log.info("memory_cost is {:.1f} MB, param size is {:.1f} MB, act_size each sample is {:.1f} MB".
-                 format(memory_cost / MB, memory_cost_dict["param_size"] / MB, memory_cost_dict["act_size"] / MB))
-
-        return
-
     if args.mesa or (args.new_backrazor and args.quantize):
         for name, module in model.named_modules():
             module.name = name
@@ -435,6 +418,16 @@ def main():
         model.to(args.device)
 
     log.info(str(model))
+
+    activation_bits = 32
+    memory_cost, memory_cost_dict = profile_memory_cost(model, input_size=(1, 3, 224, 224), require_backward=True,
+                                                        activation_bits=activation_bits, trainable_param_bits=32,
+                                                        head_only=args.fix_backbone,
+                                                        frozen_param_bits=8, batch_size=128)
+    MB = 1024 * 1024
+    log.info("memory_cost is {:.1f} MB, param size is {:.1f} MB, act_size each sample is {:.1f} MB".
+             format(memory_cost / MB, memory_cost_dict["param_size"] / MB, memory_cost_dict["act_size"] / MB))
+
     masking = None
     if args.prune:
         masking = Masking(model, death_rate=args.prune_death_rate, density=args.prune_dense_ratio,

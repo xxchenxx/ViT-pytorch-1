@@ -76,13 +76,13 @@ train.py --name cifar100-lr${lr}-B128 --learning_rate ${lr} --num_workers 2 --ou
 done
 
 ###################### cifar100 fix the backbone ######################
-#save_dir="/mnt/models/Ziyu_model/M2M_ViT"
-save_dir="."
+save_dir="/mnt/models/Ziyu_model/M2M_ViT"
+#save_dir="."
 
 #devices="8,9,10,11"
 #devices="12,13,14,15"
-devices="4,5,6,7"
-port=4729
+devices="9"
+port=4229
 n_gpu=1
 
 for lr in 0.3

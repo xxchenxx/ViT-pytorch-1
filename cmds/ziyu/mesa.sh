@@ -54,12 +54,12 @@ train.py --name cifar10-lr${lr}-B128-mesa --learning_rate ${lr} --num_workers 2 
 done
 
 ###################### cifar100 B128 mesa ######################
-save_dir="/mnt/models/Ziyu_model/M2M_ViT"
-#save_dir="."
+#save_dir="/mnt/models/Ziyu_model/M2M_ViT"
+save_dir="."
 
 #devices="8,9,10,11"
 #devices="12,13,14,15"
-devices="14"
+devices="4"
 port=7595
 n_gpu=1
 
