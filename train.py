@@ -14,8 +14,8 @@ import torch.distributed as dist
 
 from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
-from apex import amp
-from apex.parallel import DistributedDataParallel as DDP
+#from apex import amp
+#from apex.parallel import DistributedDataParallel as DDP
 
 from models.modeling import VisionTransformer, CONFIGS
 from utils.scheduler import WarmupLinearSchedule, WarmupCosineSchedule
@@ -48,9 +48,9 @@ def simple_accuracy(preds, labels):
     return (preds == labels).mean()
 
 
-def save_model(args, model):
+def save_model(args, model, step):
     model_to_save = model.module if hasattr(model, 'module') else model
-    model_checkpoint = os.path.join(args.output_dir, "%s_checkpoint.bin" % args.name)
+    model_checkpoint = os.path.join(args.output_dir, f"{args.name}_checkpoint_{step}.bin")
     torch.save(model_to_save.state_dict(), model_checkpoint)
     logger.info("Saved model checkpoint to [DIR: %s]", args.output_dir)
 
@@ -136,7 +136,7 @@ def valid(args, model, writer, test_loader, global_step):
 
     writer.add_scalar("test/accuracy", scalar_value=accuracy, global_step=global_step)
     return accuracy
-
+from torchvision import transforms, datasets
 
 def train(args, model):
     """ Train the model """
@@ -148,7 +148,32 @@ def train(args, model):
 
     # Prepare dataset
     train_loader, test_loader = get_loader(args)
+    traindir = os.path.join('/ssd1/xinyu/dataset/imagenet2012', 'train')
+    valdir = os.path.join('/ssd1/xinyu/dataset/imagenet2012', 'val')
+    normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                        std=[0.229, 0.224, 0.225])
+    train_dataset = datasets.ImageFolder(
+        traindir,
+        transforms.Compose([
+            transforms.RandomResizedCrop(224),
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor(),
+            normalize,
+        ]))
 
+    train_loader = torch.utils.data.DataLoader(
+        train_dataset, batch_size=64, shuffle=True,
+        num_workers=32, pin_memory=True)
+
+    test_loader = torch.utils.data.DataLoader(
+        datasets.ImageFolder(valdir, transforms.Compose([
+            transforms.Resize(256),
+            transforms.CenterCrop(224),
+            transforms.ToTensor(),
+            normalize,
+        ])),
+        batch_size=64, shuffle=False,
+        num_workers=32)
     # Prepare optimizer and scheduler
     optimizer = torch.optim.SGD(model.parameters(),
                                 lr=args.learning_rate,

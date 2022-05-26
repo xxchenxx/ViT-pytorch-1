@@ -184,7 +184,7 @@ def train(args, model):
         for step, batch in enumerate(epoch_iterator):
             batch = tuple(t.to(args.device) for t in batch)
             x, y = batch
-            loss = model(x, y, mode='mlp')
+            loss = model(x, y, mode=args.replace_mode)
 
             if args.gradient_accumulation_steps > 1:
                 loss = loss / args.gradient_accumulation_steps
@@ -213,7 +213,7 @@ def train(args, model):
                     writer.add_scalar("train/lr", scalar_value=scheduler.get_lr()[0], global_step=global_step)
                 if global_step % args.eval_every == 0 and args.local_rank in [-1, 0]:
                     #accuracy = valid(args, model, writer, train_loader, global_step, mode="mlp")
-                    accuracy = valid(args, model, writer, test_loader, global_step, mode="mlp")
+                    accuracy = valid(args, model, writer, test_loader, global_step, mode=args.replace_mode)
                     if best_acc < accuracy:
                         save_model(args, model)
                         best_acc = accuracy
@@ -287,6 +287,7 @@ def main():
                              "Positive power of 2: static loss scaling value.\n")
     
     parser.add_argument('--focus-id', type=int, default=0, nargs='+')
+    parser.add_argument('--replace-mode', type=str, default='mlp')
     args = parser.parse_args()
 
     # Setup CUDA, GPU & distributed training

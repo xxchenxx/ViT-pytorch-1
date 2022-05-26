@@ -269,7 +269,7 @@ class Block(nn.Module):
 
 
 class Encoder(nn.Module):
-    def __init__(self, config, vis, focus_id=None):
+    def __init__(self, config, vis, focus_id=[]):
         super(Encoder, self).__init__()
         self.vis = vis
         self.layer = nn.ModuleList()
@@ -288,23 +288,23 @@ class Encoder(nn.Module):
         attn_outputs = []
         for idx, layer_block in enumerate(self.layer):
             if idx in self.focus_id:
-                #print(hidden_states.shape)
                 inputs.append(hidden_states)
                 mlp_outputs.append(self.mixers[idx](hidden_states))
             
-            if mode == 'attn':
-
+            if mode == 'attn' or idx not in self.focus_id:
+                print('attn')
                 hidden_states, weights = layer_block(hidden_states)
-            elif idx in self.focus_id:
-
+            elif idx in self.focus_id and mode == 'mlp':
+                print('mlp')
                 hidden_states = self.mixers[idx](hidden_states)
+            elif idx in self.focus_id and mode == 'skip':
+                print('skip')
+                hidden_states = hidden_states
             else:
-                
-                hidden_states, weights = layer_block(hidden_states)
+                raise NotImplementedError
 
 
             if idx in self.focus_id:
-                #print(hidden_states.shape)
                 attn_outputs.append(hidden_states)
             if self.vis:
                 attn_weights.append(weights)
@@ -315,7 +315,7 @@ class Encoder(nn.Module):
 
 
 class Transformer(nn.Module):
-    def __init__(self, config, img_size, vis, focus_id=None):
+    def __init__(self, config, img_size, vis, focus_id=[]):
         super(Transformer, self).__init__()
         self.embeddings = Embeddings(config, img_size=img_size)
         self.encoder = Encoder(config, vis, focus_id)
@@ -327,7 +327,7 @@ class Transformer(nn.Module):
 
 
 class VisionTransformer(nn.Module):
-    def __init__(self, config, img_size=224, num_classes=21843, zero_head=False, vis=False, focus_id=None):
+    def __init__(self, config, img_size=224, num_classes=21843, zero_head=False, vis=False, focus_id=[]):
         super(VisionTransformer, self).__init__()
         self.num_classes = num_classes
         self.zero_head = zero_head
