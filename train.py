@@ -150,7 +150,7 @@ def train(args, model, train_loader, val_loader, test_loader, masking, log, writ
     model.zero_grad()
     set_seed(args)  # Added here for reproducibility (even between python 2 and 3)
     losses = AverageMeter()
-    global_step, best_acc = 0, 0
+    global_step = 0
 
     if args.prune:
         masking.init(train_loader, model)
@@ -212,9 +212,7 @@ def train(args, model, train_loader, val_loader, test_loader, masking, log, writ
                 if global_step % args.eval_every == 0:
                     accuracy = valid(args, model, writer, val_loader, global_step, log)
                 if global_step % args.eval_every == 0 and args.local_rank in [-1, 0]:
-                    if best_acc < accuracy:
-                        save_model(args, model, log)
-                        best_acc = accuracy
+                    save_model(args, model, log)
                     model.train()
                 torch.distributed.barrier()
                 if global_step % args.prune_inv == 0 and (global_step <= args.prune_end) and args.prune:
@@ -227,11 +225,7 @@ def train(args, model, train_loader, val_loader, test_loader, masking, log, writ
         if global_step % t_total == 0:
             break
 
-    checkpoint = torch.load(os.path.join(log.path, 'checkpoint_best.pth'), map_location="cpu")
-    state_dict = checkpoint
-    model.module.load_state_dict(state_dict)
-    test_accuracy = valid(args, model, writer, test_loader, global_step, log, "Testing")
-    log.info("Best Accuracy: \t{}".format(test_accuracy))
+    log.info("Final Accuracy: \t{}".format(accuracy))
     log.info("End Training!")
 
     if args.local_rank in [-1, 0]:
@@ -242,7 +236,9 @@ def main():
     parser = argparse.ArgumentParser()
     # Required parameters
     parser.add_argument("--name", required=True, help="Name of this run. Used for monitoring.")
-    parser.add_argument("--dataset", choices=["cifar10", "cifar100", "aircraft", "Pet37", "flowers102", "stanford_car"],
+    parser.add_argument("--dataset", choices=["cifar10", "cifar100", "aircraft",
+                                              "Pet37", "flowers", "stanford_car",
+                                              "cub200", "food101"],
                         default="cifar10", help="Which downstream task.")
     parser.add_argument("--data", default="placeholder", help="Which downstream task.")
     parser.add_argument("--customSplit", default="", help="the downstream custom split.")

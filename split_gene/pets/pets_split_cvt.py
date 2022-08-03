@@ -38,7 +38,6 @@ def main():
     with open("split/Pet37/Pet37_val_new.txt", "w") as f:
         f.writelines(lines_new)
 
-
     with open("split/Pet37/Pet37_test.txt", "r") as f:
         lines = f.readlines()
 
